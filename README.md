@@ -52,3 +52,9 @@ Rules for yourself:
 - Edge `e = (u, v)` carries `U_e`, mapping u's frame to v's: consistent means `U_e ψ_u = ψ_v`.
 - States have width `d = n_blocks × b`; rotations are stored as `(..., n_blocks, b, b)`.
 - Prototype size: `d = 128`, `b = 64`. The final model uses `d = 1024`, `b = 64`.
+
+## License
+
+Copyright 2026 Bhaskar Bahukhandi.
+
+Licensed under the Apache License, Version 2.0; see [LICENSE](LICENSE). You may use, modify and redistribute this code, including commercially, provided you keep the licence and copyright notices and state any changes you make. If you use it in research, please cite the project.
