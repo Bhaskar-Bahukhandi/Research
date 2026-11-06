@@ -4,10 +4,10 @@ Exercise (week 4, Mon Nov 30). Spec: tests/test_localise.py.
 """
 from __future__ import annotations
 
-import torch  # noqa: F401
+import torch
 from torch import Tensor
 
-from .defects import holonomy_scores  # noqa: F401
+from .defects import holonomy_scores
 from .graph import RotationGraph
 
 
@@ -94,4 +94,22 @@ def cut_pair_classes(graph: RotationGraph) -> list[int]:
         lies in an odd number of them.)
     Spec: tests/test_cut_pairs.py.
     """
-    raise NotImplementedError("cut_pair_classes")
+    tree = graph.spanning_tree(0)
+    cycles_by_edge: list[set[int]] = [set() for _ in range(graph.n_edges)]
+
+    for chord in tree.chords:
+        for edge in graph.cycle_edges(tree, chord):
+            cycles_by_edge[edge].add(chord)
+
+    labels = [-1] * graph.n_edges
+    label_by_signature: dict[frozenset[int], int] = {}
+    for edge, cycle_signature in enumerate(cycles_by_edge):
+        if not cycle_signature:
+            continue
+
+        signature = frozenset(cycle_signature)
+        if signature not in label_by_signature:
+            label_by_signature[signature] = len(label_by_signature)
+        labels[edge] = label_by_signature[signature]
+
+    return labels
