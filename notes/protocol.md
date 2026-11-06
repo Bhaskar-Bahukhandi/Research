@@ -31,6 +31,23 @@ Each change keeps the original value visible.
 - **2026-11-06, G1 slope threshold 1.2 → 1.3.** Changed during scaffolding, after the reference implementation (written with Claude) measured a slope of 1.13, and before my own implementation was run. Reason: cache effects at small sizes push measured slopes above 1 even for a linear-time method.
 - **2026-11-06, G1 is not pre-registered in the strict sense.** The G1 thresholds were written in the scaffold, but they were first committed (commit `f4c4c09`) together with my already-working implementation, and G1 was measured the same day. G1 is recorded here for completeness. This file pre-registers G2 onwards.
 - **2026-11-06, H2 sharpened.** Proposal Section 2 states H2 as "the cycle holonomy defect separates true from false facts better than existing rotation-based scores", falsified by "AUC no better than RotatE, and no gain when the two scores are combined". That allows two routes to success. Here it becomes one primary test of added information, and graph structure joins the baseline, because the structure checks below showed shortcuts that would otherwise be credited to holonomy. The proposal text will be updated to match.
+- **2026-11-06 (after tag `prereg-g2`, before any use of a test split), baseline reproduction may use the test split.** For the plan's baseline reproduction (Dec 7–9), RotatE and QuatE may be trained at their published hyperparameters, and their filtered test MRR and Hits@1/10 computed, solely to check the implementation against published figures. These runs are separate from G2:
+  - their numbers are not G2 features;
+  - they do not influence any G2 configuration, search range or threshold;
+  - no holonomy-model score, negative set or path feature is evaluated on a test split before the G2 timing condition below is met.
+
+  The published-hyperparameter models are larger than the G2 parameter budget, so their MRR is not comparable with the budget-matched G2 models.
+- **2026-11-06 (after tag `prereg-g2`, before any tuning), parameter budget fixed at 2.0M; dense rotations become an ablation.** On FB15k-237 the holonomy model's trainable parameters are:
+  - 1.92M with rank-1 Cayley rotations;
+  - 1.98M with rank 2;
+  - 2.10M with rank 4;
+  - 3.80M with dense rotations (`experiments/time_budget.py`).
+
+  The plan's rank sweep included "dense", so the budget-matched baseline sizes would change from trial to trial. Changes:
+  - **Budget:** fixed at **2.0M ± 5%** (1.90M–2.10M) for every model;
+  - **G2 tuning:** sweeps rank r ∈ {1, 2, 4} only;
+  - **Baselines:** RotatE (complex dimension 68) and QuatE (dimension 34) are sized once to this budget;
+  - **Dense rotations:** run only as secondary ablation S10. It is outside the budget and reported as such, and cannot affect the gate.
 
 ## G2 (H2) in full
 
@@ -130,6 +147,7 @@ The baseline below therefore includes all of these signals, so that holonomy is 
 7. **S7:** per-relation grouped AUC. On WN18RR, this compares triples whose exact reverse (t, r, h) is in training against the rest.
 8. **S8:** filtered MRR and Hits@1/10 for every model, for comparison with published results, including the holonomy model's single-triple score.
 9. **S9:** results with flagged fallback negatives excluded, and B₁ with the holonomy feature in quantile bins, to catch non-monotone effects.
+10. **S10:** the holonomy model with dense rotations (3.80M parameters, outside the 2.0M budget), with the primary test repeated and the size difference stated.
 
 ## Method choices fixed in advance
 
