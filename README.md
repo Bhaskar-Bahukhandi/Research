@@ -20,12 +20,14 @@ On day one you should see the infrastructure tests pass and every exercise repor
 | `rtvm/rotations.py` | Cayley map, low-rank Woodbury rotations, block helpers | Exercises: week 3 Mon–Tue |
 | `rtvm/graph.py` | `RotationGraph`, spanning trees, cycles; tree transport | Transport exercise: week 3 Wed |
 | `rtvm/defects.py` | Coboundary residuals, chord defects, holonomies | Exercises: week 3 Thu–Fri |
-| `rtvm/localise.py` | Finding the corrupted edge from defects | Exercise: week 4 Mon |
+| `rtvm/localise.py` | Finding the corrupted edge from defects; bridges; cut-pair groups | Exercises: week 4 Mon, plus `cut_pair_classes` |
 | `rtvm/projection.py` | Projection onto ker(δ⁰) | Exercise: week 4 Tue |
 | `rtvm/synthetic.py` | Random rotations and graphs, consistent / corrupted / partially consistent graphs | Provided |
 | `rtvm/utils.py` | Seeding, parameter counting | Provided |
 | `tests/` | The specification for every exercise | Provided |
 | `experiments/phase1_sanity.py` | Histograms and scaling plot for gate G1 | Provided |
+| `experiments/phase1_week4.py` | Localisation curves, noise test, timing contrasts | Provided |
+| `notes/phase1_report.md` | Phase 1 report skeleton | Fill in (Dec 4) |
 | `notes/protocol.md` | Pre-registered pass thresholds; commit by Nov 20 | Fill in |
 | `notes/weekly_log.md` | Saturday review template | Fill in |
 

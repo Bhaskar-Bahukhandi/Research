@@ -47,3 +47,51 @@ def localise_corrupted_edges(graph: RotationGraph, n_trees: int = 5, threshold: 
 
     values = [bad_count / max(total_count, 1) for bad_count, total_count in zip(bad, total)]
     return torch.tensor(values, dtype=graph.rotations.dtype, device=graph.rotations.device)
+
+
+# ---------------------------------------------------------------------------
+# What CAN be located (provided helper + week 4 exercise)
+# ---------------------------------------------------------------------------
+
+def bridges(graph: RotationGraph) -> set[int]:
+    """Indices of edges that lie on no cycle. No cycle test can ever check them.
+
+    Uses one spanning tree: an edge lies on SOME cycle if and only if it lies
+    on at least one fundamental cycle, because every cycle is a sum (mod 2)
+    of fundamental cycles.
+    """
+    tree = graph.spanning_tree(0)
+    on_a_cycle: set[int] = set()
+    for chord in tree.chords:
+        on_a_cycle |= graph.cycle_edges(tree, chord)
+    return set(range(graph.n_edges)) - on_a_cycle
+
+
+def cut_pair_classes(graph: RotationGraph) -> list[int]:
+    """Group the edges that no cycle test can tell apart. Exercise (week 4).
+
+    Two edges are indistinguishable when they lie on exactly the same cycles,
+    which happens exactly when removing both disconnects the graph (a "cut
+    pair"). Every cycle test then sees them together, so localisation can only
+    ever name the group. (At a degree-2 vertex this is your gauge argument:
+    re-choosing w's frame moves a corruption from one edge to the other.)
+
+    Returns one label per edge:
+      * -1 for a bridge (on no cycle at all; see ``bridges``)
+      * 0, 1, 2, ... for the other edges, numbered in order of first
+        appearance by edge index, so edge groups get labels 0, 1, ... as you
+        scan edges 0, 1, 2, ...
+    Edges e != f get the same label exactly when {e, f} is a cut pair.
+
+    Two ways to do it (try the second; it is the one worth understanding):
+      * Brute force: for every pair, delete both and test connectivity.
+        O(|E|^2 (|V| + |E|)). Fine for tests, hopeless for a knowledge graph.
+      * Signatures: with ONE spanning tree, give each edge the set of
+        fundamental cycles (chords) that contain it, then group equal sets.
+        Prove first why one tree is enough: if e and f lie on the same
+        fundamental cycles, why must they lie on the same cycles of every
+        kind? (Hint: an edge lies in a mod-2 sum of cycles exactly when it
+        lies in an odd number of them.)
+    Spec: tests/test_cut_pairs.py.
+    """
+    raise NotImplementedError("cut_pair_classes")
