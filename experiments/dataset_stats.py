@@ -240,7 +240,7 @@ def markdown(results: list[dict], commit: str) -> str:
         "Counts below use PyKEEN's splits, which drop evaluation triples with an entity unseen in training; "
         "the published sizes are listed for comparison.",
         "",
-        "\* Head coverage, not rule confidence: the share of a relation's triples that the 2-hop pattern "
+        "\\* Head coverage, not rule confidence: the share of a relation's triples that the 2-hop pattern "
         "connects. A generic pattern through a hub (for example \"same profession\") can cover a relation "
         "without predicting it, so these rows are an upper bound on genuine composition.",
         "",
