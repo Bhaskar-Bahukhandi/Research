@@ -23,8 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rtvm.defects import chord_defects, holonomy_scores  # noqa: E402
 from rtvm.localise import bridges, cut_pair_classes, localise_corrupted_edges  # noqa: E402
-from rtvm.rotations import cayley, cayley_lowrank_apply, lowrank_skew, skew  # noqa: E402
-from rtvm.synthetic import consistent_graph, corrupt_edges, random_connected_graph  # noqa: E402
+from rtvm.rotations import cayley, cayley_lowrank_apply, lowrank_skew  # noqa: E402
+from rtvm.synthetic import consistent_graph, corrupt_edges, random_connected_graph, small_rotations  # noqa: E402
 from rtvm.utils import seed_everything  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "out"
@@ -131,18 +131,6 @@ def localise(n_graphs: int = 20) -> dict:
 # Dec 3: noise test
 # ---------------------------------------------------------------------------
 
-def small_rotations(n: int, n_blocks: int, b: int, size: float, gen: torch.Generator) -> torch.Tensor:
-    """n random block rotations R with |R - I|_F close to ``size`` (exactly, as size -> 0).
-
-    cayley(A) is about I - 2A for small A, so scaling A to Frobenius norm
-    size / 2 gives |R - I|_F about ``size``. Measuring noise in |R - I|_F, the
-    same unit as the holonomy score, keeps the axes comparable.
-    """
-    A = skew(torch.randn(n, n_blocks, b, b, generator=gen, dtype=torch.float64))
-    A = A * (size / 2) / A.flatten(1).norm(dim=1).clamp_min(1e-12)[:, None, None, None]
-    return cayley(A).float()
-
-
 def noise(n_graphs: int = 10) -> dict:
     """AUC of the holonomy score at separating corrupted from clean cycles as noise grows.
 
@@ -171,9 +159,9 @@ def noise(n_graphs: int = 10) -> dict:
                 else:
                     idx = sorted(torch.randperm(n_e, generator=gen)[:k].tolist())
                     rots = graph.rotations.clone()
-                    rots[idx] = small_rotations(k, n_blocks, b, tau, gen) @ rots[idx]
+                    rots[idx] = small_rotations(k, n_blocks, b, tau, generator=gen) @ rots[idx]
                 if sigma > 0:
-                    rots = small_rotations(n_e, n_blocks, b, sigma, gen) @ rots
+                    rots = small_rotations(n_e, n_blocks, b, sigma, generator=gen) @ rots
                 noisy = graph.with_rotations(rots)
                 tree = noisy.spanning_tree(0)
                 for c, score in zip(tree.chords, holonomy_scores(noisy, tree).tolist()):

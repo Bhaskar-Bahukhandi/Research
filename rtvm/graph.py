@@ -91,6 +91,20 @@ class RotationGraph:
         return len(self.edges)
 
     @property
+    def edge_index(self) -> Tensor:
+        """Edges as a (n_edges, 2) long tensor [source, target] on the rotations' device.
+
+        Built once and cached: converting the Python edge list costs O(|E|)
+        interpreter work, which adds up inside a training loop.
+        """
+        cached = getattr(self, "_edge_index", None)
+        if cached is None or cached.device != self.rotations.device:
+            cached = torch.tensor(self.edges, dtype=torch.long,
+                                  device=self.rotations.device).reshape(-1, 2)
+            self._edge_index = cached
+        return cached
+
+    @property
     def n_blocks(self) -> int:
         return self.rotations.shape[1]
 

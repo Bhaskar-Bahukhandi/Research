@@ -11,9 +11,21 @@ from .defects import holonomy_scores
 from .graph import RotationGraph
 
 
-def localise_corrupted_edges(graph: RotationGraph, n_trees: int = 5, threshold: float = 1e-3,
+def localise_corrupted_edges(graph: RotationGraph, n_trees: int = 5, threshold: float | None = 1e-3,
                              seed: int = 0) -> Tensor:
-    """Score each edge by how often the cycles through it are defective, shape (n_edges,), in [0, 1].
+    """Score each edge by how defective the cycles through it are, shape (n_edges,).
+
+    Two modes:
+      * ``threshold`` a number (default, the G1 spec): the fraction of cycles
+        through the edge whose holonomy score exceeds ``threshold``, in [0, 1].
+        Only valid when clean cycles score near zero, i.e. exact rotations.
+      * ``threshold=None``: the MEAN holonomy score of the cycles through the
+        edge. Use this for learned or noisy rotations (Phase 2 onwards). With
+        noise of size sigma per edge, clean cycles score about sigma * sqrt(L),
+        so any fixed threshold below that marks EVERY cycle bad, every edge
+        scores 1 and the ranking is random. Measured on 40-vertex graphs: the
+        counting mode falls from 1.00 to 0.00 recall at noise 0.03, while the
+        mean mode stays at 1.00 up to noise 0.3 (Nov 6 2026).
 
     Suggested method (you may find a better one, as long as the tests pass):
       * Repeat ``n_trees`` times: pick a random root and random edge weights
@@ -30,7 +42,7 @@ def localise_corrupted_edges(graph: RotationGraph, n_trees: int = 5, threshold: 
     """
     generator = torch.Generator().manual_seed(seed)
     total = [0] * graph.n_edges
-    bad = [0] * graph.n_edges
+    bad = [0.0] * graph.n_edges
 
     for _ in range(n_trees):
         root = torch.randint(graph.n_vertices, (1,), generator=generator).item()
@@ -40,10 +52,10 @@ def localise_corrupted_edges(graph: RotationGraph, n_trees: int = 5, threshold: 
 
         for chord, score in zip(tree.chords, scores.tolist()):
             cycle = graph.cycle_edges(tree, chord)
-            is_bad = score > threshold
+            evidence = score if threshold is None else float(score > threshold)
             for edge in cycle:
                 total[edge] += 1
-                bad[edge] += int(is_bad)
+                bad[edge] += evidence
 
     values = [bad_count / max(total_count, 1) for bad_count, total_count in zip(bad, total)]
     return torch.tensor(values, dtype=graph.rotations.dtype, device=graph.rotations.device)

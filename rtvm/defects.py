@@ -23,7 +23,7 @@ def edge_residuals(graph: RotationGraph, psi: Tensor) -> Tensor:
     Hint: gather psi at all edge sources and targets with index tensors, then a
     single ``block_apply`` over all edges. No Python loop over edges needed.
     """
-    edge_index = torch.tensor(graph.edges, dtype=torch.long, device=psi.device).reshape(-1, 2)
+    edge_index = graph.edge_index.to(psi.device)
     sources = edge_index[:, 0]
     targets = edge_index[:, 1]
     # Every edge in order, so no gather is needed: block_apply uses R directly.
@@ -40,8 +40,7 @@ def chord_defects(graph: RotationGraph, tree: SpanningTree, psi_root: Tensor) ->
     """
     states = graph.propagate(tree, psi_root)  # vectors only: no transport matrices
     chord_index = torch.tensor(tree.chords, dtype=torch.long, device=graph.rotations.device)
-    edge_index = torch.tensor(graph.edges, dtype=torch.long, device=graph.rotations.device).reshape(-1, 2)
-    chord_edges = edge_index[chord_index]
+    chord_edges = graph.edge_index[chord_index]
     sources, targets = chord_edges.unbind(dim=-1)
     n = len(tree.chords)
     columns = states[sources].reshape(n, graph.n_blocks, graph.block_size, 1)
@@ -60,8 +59,7 @@ def holonomies(graph: RotationGraph, tree: SpanningTree) -> Tensor:
 
     transports = graph.transports(tree)
     chord_index = torch.tensor(tree.chords, dtype=torch.long, device=graph.rotations.device)
-    edge_index = torch.tensor(graph.edges, dtype=torch.long, device=graph.rotations.device)
-    chord_edges = edge_index[chord_index]
+    chord_edges = graph.edge_index[chord_index]
     sources, targets = chord_edges.unbind(dim=-1)
     return (
         block_transpose(transports[targets])

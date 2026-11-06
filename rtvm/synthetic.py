@@ -27,6 +27,22 @@ def random_rotation(n_blocks: int, b: int, *, generator: torch.Generator | None 
     return Q.to(dtype)
 
 
+def small_rotations(n: int, n_blocks: int, b: int, size: float, *,
+                    generator: torch.Generator | None = None,
+                    dtype: torch.dtype = torch.float32) -> Tensor:
+    """n random block rotations R of shape (n, n_blocks, b, b) with |R - I|_F close to ``size``.
+
+    R = exp(A) for a random skew A scaled to Frobenius norm ``size``; for small
+    A, exp(A) is about I + A, so |R - I|_F is about ``size`` (exact as size -> 0).
+    Measuring noise in |R - I|_F puts it in the same units as the holonomy
+    score. Use it to model imperfectly learned rotations: ``R @ rotations``.
+    """
+    G = torch.randn(n, n_blocks, b, b, generator=generator, dtype=torch.float64)
+    A = 0.5 * (G - G.transpose(-1, -2))
+    A = A * size / A.flatten(1).norm(dim=1).clamp_min(1e-12)[:, None, None, None]
+    return torch.linalg.matrix_exp(A).to(dtype)
+
+
 def random_connected_graph(n_vertices: int, n_edges: int, seed: int = 0) -> list[tuple[int, int]]:
     """A random connected simple graph with randomly oriented edges.
 
