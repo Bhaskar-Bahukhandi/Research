@@ -8,7 +8,8 @@ minimum spanning trees under random weights for localisation), tree paths and
 cycle edges.
 
 Exercises (week 3, Wed Nov 25): ``RotationGraph.transports`` and
-``RotationGraph.propagate``. Spec: tests/test_graph.py.
+``RotationGraph.propagate``. Spec: tests/test_graph.py. Revised Nov 6 2026 to
+push vectors level by level (see the "Tree transport" section).
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from .rotations import block_apply, block_transpose, identity_blocks  # noqa: F401  (you will need these)
+from .rotations import gather_apply, identity_blocks
 
 
 @dataclass
@@ -39,6 +40,23 @@ class SpanningTree:
     chords: list[int]
 
 
+@dataclass
+class TreeLevel:
+    """All vertices at one depth of a spanning tree, as index tensors.
+
+    vertices:   (n,) vertex ids at this depth
+    parent_pos: (n,) position of each vertex's parent inside the PREVIOUS level
+    edges:      (n,) the tree edge joining each vertex to its parent
+    n_forward:  the first n_forward edges are stored as (parent, child) and use
+                U_e; the remaining ones are stored as (child, parent) and use U_e^T
+    """
+
+    vertices: Tensor
+    parent_pos: Tensor
+    edges: Tensor
+    n_forward: int
+
+
 class RotationGraph:
     """Directed multigraph with one block rotation per edge.
 
@@ -54,15 +72,19 @@ class RotationGraph:
         if rotations.shape[-1] != rotations.shape[-2]:
             raise ValueError("rotation blocks must be square")
         for u, v in edges:
-            if not (0 <= u < n_vertices and 0 <= v < n_vertices) or u == v:
+            if not (0 <= u < n_vertices and 0 <= v < n_vertices):
                 raise ValueError(f"invalid edge {(u, v)}")
         self.n_vertices = n_vertices
         self.edges = [tuple(e) for e in edges]
         self.rotations = rotations
         self._adj: list[list[tuple[int, int]]] = [[] for _ in range(n_vertices)]
         for i, (u, v) in enumerate(self.edges):
+            # A self-loop (u, u) is allowed: it asks U_e psi_u = psi_u. It can
+            # never be a tree edge, so it is always a chord whose cycle is
+            # itself, with holonomy T_u^T U_e T_u. Knowledge graphs contain a few.
             self._adj[u].append((v, i))
-            self._adj[v].append((u, i))
+            if u != v:
+                self._adj[v].append((u, i))
 
     @property
     def n_edges(self) -> int:
@@ -151,51 +173,113 @@ class RotationGraph:
         return {chord} | (set(self.path_to_root(tree, u)) ^ set(self.path_to_root(tree, v)))
 
     # -----------------------------------------------------------------------
-    # Exercises
+    # Tree transport
     # -----------------------------------------------------------------------
+    #
+    # Both methods below push something from the root down the tree:
+    #   * transports() pushes the identity MATRIX, giving every T_v. Needed when
+    #     you want psi-free quantities (holonomies, the projection).
+    #   * propagate() pushes one VECTOR psi_root, giving every psi_v = T_v psi_r.
+    #     This is all a defect evaluation needs, and it costs O(|V| d b) instead
+    #     of O(|V| d b^2), a factor of b = 64 less work.
+    #
+    # Vertices at the same depth never depend on each other (each depends only
+    # on its parent, one level up), so a whole level is one batched matmul.
+    # The Python loop runs once per LEVEL, not once per vertex.
+
+    def tree_levels(self, tree: SpanningTree) -> list[TreeLevel]:
+        """Group the tree's vertices by depth, ready for batched transport.
+
+        Raises ValueError if ``tree`` does not match this graph: an incomplete
+        or repeated vertex order, a parent that comes after its child, or a
+        parent edge that does not join the vertex to its parent. Failing loudly
+        here is what stops a bad tree from silently mislabelling states.
+        """
+        n = self.n_vertices
+        if len(tree.order) != n or sorted(tree.order) != list(range(n)):
+            raise ValueError("tree.order must list every vertex exactly once")
+        if tree.order[0] != tree.root:
+            raise ValueError("tree.order must start at the root")
+
+        depth = [-1] * n
+        depth[tree.root] = 0
+        buckets: list[list[int]] = [[tree.root]]
+        for v in tree.order[1:]:
+            p, e = tree.parent[v], tree.parent_edge[v]
+            if p < 0 or depth[p] < 0:
+                raise ValueError(f"parent of vertex {v} is missing or comes after it in tree.order")
+            if e < 0 or set(self.edges[e]) != {p, v}:
+                raise ValueError(f"parent_edge of vertex {v} does not join it to its parent {p}")
+            depth[v] = depth[p] + 1
+            if depth[v] == len(buckets):
+                buckets.append([])
+            buckets[depth[v]].append(v)
+
+        device = self.rotations.device
+        as_index = lambda xs: torch.tensor(xs, dtype=torch.long, device=device)  # noqa: E731
+        position = [0] * n  # index of each vertex within its own level
+        position[tree.root] = 0
+        levels = [TreeLevel(as_index([tree.root]), as_index([]), as_index([]), 0)]
+        for bucket in buckets[1:]:
+            # Put edges stored as (parent, child) first: they use U_e. The rest
+            # are stored as (child, parent) and use U_e^T. Sorting this way lets
+            # one level be two contiguous slices instead of a gather + where.
+            forward = [v for v in bucket if self.edges[tree.parent_edge[v]][0] == tree.parent[v]]
+            backward = [v for v in bucket if self.edges[tree.parent_edge[v]][0] != tree.parent[v]]
+            vertices = forward + backward
+            parent_pos = [position[tree.parent[v]] for v in vertices]
+            for i, v in enumerate(vertices):
+                position[v] = i
+            levels.append(TreeLevel(
+                vertices=as_index(vertices),
+                parent_pos=as_index(parent_pos),
+                edges=as_index([tree.parent_edge[v] for v in vertices]),
+                n_forward=len(forward),
+            ))
+        return levels
+
+    def _push_down(self, tree: SpanningTree, root_payload: Tensor) -> Tensor:
+        """Carry ``root_payload`` (n_blocks, b, k) down the tree; returns (n_vertices, n_blocks, b, k).
+
+        k = b pushes matrices (transports); k = 1 pushes one column vector.
+        """
+        levels = self.tree_levels(tree)
+        current = root_payload.unsqueeze(0)
+        per_level = [current]
+        for level in levels[1:]:
+            x = current[level.parent_pos]
+            f = level.n_forward
+            current = torch.cat((
+                gather_apply(self.rotations, level.edges[:f], x[:f]),
+                gather_apply(self.rotations, level.edges[f:], x[f:], transpose=True),
+            ))
+            per_level.append(current)
+        # Rows are now in level order; put them back in vertex order. Building
+        # the result out of fresh tensors (no in-place writes) keeps autograd simple.
+        level_order = torch.cat([level.vertices for level in levels])
+        inverse = torch.empty_like(level_order)
+        inverse[level_order] = torch.arange(self.n_vertices, device=level_order.device)
+        return torch.cat(per_level)[inverse]
 
     def transports(self, tree: SpanningTree) -> Tensor:
         """Transport T_v from the root to every vertex, shape (n_vertices, n_blocks, b, b).
 
         Defined so that psi_v = T_v psi_r makes every TREE edge consistent.
-
-        Hints:
-          * T_root is the identity (``identity_blocks``).
-          * Visit vertices in ``tree.order`` so each parent is done before its child.
-          * For child v with parent p and tree edge e = parent_edge[v]:
-              - if edges[e] == (p, v): psi_v = U_e psi_p,   so T_v = U_e T_p
-              - if edges[e] == (v, p): psi_p = U_e psi_v,   so T_v = U_e^T T_p
-            Iteration 7 of the PDF forgot the second case.
-          * Use the rotations' dtype and device.
+        For child v with parent p and tree edge e = parent_edge[v]:
+          - if edges[e] == (p, v): psi_v = U_e psi_p,   so T_v = U_e T_p
+          - if edges[e] == (v, p): psi_p = U_e psi_v,   so T_v = U_e^T T_p
+        Only call this when you need the matrices; for states use ``propagate``.
         """
-        identity = identity_blocks(
-            self.n_blocks,
-            self.block_size,
-            dtype=self.rotations.dtype,
-            device=self.rotations.device,
-        )
-        transports: list[Tensor | None] = [None] * self.n_vertices
-        transports[tree.root] = identity
-
-        for vertex in tree.order[1:]:
-            parent = tree.parent[vertex]
-            edge = tree.parent_edge[vertex]
-            parent_transport = transports[parent]
-            if parent_transport is None:
-                raise ValueError("tree order must visit each parent before its children")
-
-            source, target = self.edges[edge]
-            rotation = self.rotations[edge]
-            if (source, target) == (parent, vertex):
-                transports[vertex] = rotation @ parent_transport
-            else:
-                transports[vertex] = block_transpose(rotation) @ parent_transport
-
-        return torch.stack([transport for transport in transports if transport is not None])
+        identity = identity_blocks(self.n_blocks, self.block_size,
+                                   dtype=self.rotations.dtype, device=self.rotations.device)
+        return self._push_down(tree, identity)
 
     def propagate(self, tree: SpanningTree, psi_root: Tensor) -> Tensor:
         """States psi_v = T_v psi_root for all vertices, shape (n_vertices, d).
 
-        Hint: ``block_apply`` broadcasts over the vertex dimension.
+        Pushes the vector itself down the tree; never forms a b x b transport.
         """
-        return block_apply(self.transports(tree), psi_root)
+        if psi_root.shape != (self.dim,):
+            raise ValueError(f"psi_root must have shape ({self.dim},), got {tuple(psi_root.shape)}")
+        column = psi_root.reshape(self.n_blocks, self.block_size, 1)
+        return self._push_down(tree, column).reshape(self.n_vertices, self.dim)

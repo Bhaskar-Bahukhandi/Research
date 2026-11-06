@@ -20,7 +20,13 @@ def skew(P: Tensor) -> Tensor:
     """Skew-symmetric part-maker: map any square P to A with A^T = -A.
 
     Works on the last two dimensions, so P may carry batch dimensions.
-    Hint: one line. Which combination of P and its transpose is antisymmetric?
+
+    Convention: returns the skew-symmetric PART of P, 0.5 (P - P^T), so that
+    skew(A) == A for an already skew A (the map is a projection). The proposal
+    writes A = P - P^T, which is exactly twice this. Either gives a valid
+    rotation; they differ only in scale, so when Phase 2 initialises P with
+    standard deviation sigma, the generator A here has entries of size about
+    sigma / sqrt(2), not sigma * sqrt(2). Quote this convention in the paper.
     """
     return 0.5 * (P - P.transpose(-1, -2))
 
@@ -98,3 +104,23 @@ def block_apply(R: Tensor, x: Tensor) -> Tensor:
 def block_transpose(R: Tensor) -> Tensor:
     """Transpose (= inverse, for rotations) of every block."""
     return R.transpose(-1, -2)
+
+
+def gather_apply(R: Tensor, index: Tensor, x: Tensor, *, transpose: bool = False,
+                 chunk: int = 4096) -> Tensor:
+    """Row i of the result is R[index[i]] @ x[i] (or R[index[i]]^T @ x[i]).
+
+    Shapes: R (n_edges, n_blocks, b, b); index (n,); x (n, n_blocks, b, k) -> (n, n_blocks, b, k).
+
+    ``R[index]`` is a COPY, not a view, so gathering 67k rotations at once
+    allocates gigabytes. Gathering ``chunk`` rows at a time caps that copy at
+    chunk * n_blocks * b^2 elements (128 MiB for 4096 rows of 2 blocks of 64
+    in float32) and gives the same answer.
+    """
+    pieces = []
+    for start in range(0, index.shape[0], chunk):
+        rotations = R[index[start:start + chunk]]
+        if transpose:
+            rotations = block_transpose(rotations)
+        pieces.append(rotations @ x[start:start + chunk])
+    return torch.cat(pieces) if pieces else x[:0]

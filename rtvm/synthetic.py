@@ -61,12 +61,23 @@ def consistent_graph(n_vertices: int, edges: list[tuple[int, int]], n_blocks: in
     Each vertex gets a random frame F_v; each edge (u, v) gets U_e = F_v F_u^T.
     Then psi_v = F_v c is consistent for any c, and every holonomy is the identity.
     Returns the graph and the frames, shape (n_vertices, n_blocks, b, b).
+
+    Memory: frames and rotations are stored once, directly in ``dtype``, so the
+    peak is about (n_vertices + n_edges) * n_blocks * b^2 * itemsize. (The first
+    version kept float64 copies of both plus a Python list of edge rotations,
+    roughly 4x more, and ran out of memory at d = 1024.) Each product is still
+    computed in float64 and rounded once, so clean defects stay near 1e-6.
+    Dense storage is the real limit at full width: 16 blocks of 64 x 64 in
+    float32 are 256 KiB per edge, so 40k edges already need 10 GiB.
     """
     gen = torch.Generator().manual_seed(seed)
-    frames = torch.stack([random_rotation(n_blocks, b, generator=gen, dtype=torch.float64)
-                          for _ in range(n_vertices)])
-    rots = torch.stack([frames[v] @ frames[u].transpose(-1, -2) for u, v in edges])
-    return RotationGraph(n_vertices, edges, rots.to(dtype)), frames.to(dtype)
+    frames = torch.empty(n_vertices, n_blocks, b, b, dtype=dtype)
+    for v in range(n_vertices):
+        frames[v] = random_rotation(n_blocks, b, generator=gen, dtype=dtype)
+    rots = torch.empty(len(edges), n_blocks, b, b, dtype=dtype)
+    for i, (u, v) in enumerate(edges):
+        rots[i] = (frames[v].double() @ frames[u].double().transpose(-1, -2)).to(dtype)
+    return RotationGraph(n_vertices, edges, rots), frames
 
 
 def corrupt_edges(graph: RotationGraph, k: int, seed: int = 0) -> tuple[RotationGraph, list[int]]:

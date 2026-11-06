@@ -9,7 +9,7 @@ import torch  # noqa: F401
 from torch import Tensor
 
 from .graph import RotationGraph, SpanningTree
-from .rotations import block_apply, block_transpose  # noqa: F401  (you will need these)
+from .rotations import block_apply, block_transpose, gather_apply
 
 
 def edge_residuals(graph: RotationGraph, psi: Tensor) -> Tensor:
@@ -26,6 +26,7 @@ def edge_residuals(graph: RotationGraph, psi: Tensor) -> Tensor:
     edge_index = torch.tensor(graph.edges, dtype=torch.long, device=psi.device).reshape(-1, 2)
     sources = edge_index[:, 0]
     targets = edge_index[:, 1]
+    # Every edge in order, so no gather is needed: block_apply uses R directly.
     predicted = block_apply(graph.rotations, psi[sources])
     return (predicted - psi[targets]).norm(dim=-1)
 
@@ -37,12 +38,14 @@ def chord_defects(graph: RotationGraph, tree: SpanningTree, psi_root: Tensor) ->
     |U_e psi_u - psi_v|. Tree edges are zero by construction, so only chords
     can carry a defect. Cost: linear in |V| + |E|.
     """
-    states = graph.propagate(tree, psi_root)
+    states = graph.propagate(tree, psi_root)  # vectors only: no transport matrices
     chord_index = torch.tensor(tree.chords, dtype=torch.long, device=graph.rotations.device)
     edge_index = torch.tensor(graph.edges, dtype=torch.long, device=graph.rotations.device).reshape(-1, 2)
     chord_edges = edge_index[chord_index]
     sources, targets = chord_edges.unbind(dim=-1)
-    predicted = block_apply(graph.rotations[chord_index], states[sources])
+    n = len(tree.chords)
+    columns = states[sources].reshape(n, graph.n_blocks, graph.block_size, 1)
+    predicted = gather_apply(graph.rotations, chord_index, columns).reshape(n, graph.dim)
     return (predicted - states[targets]).norm(dim=-1)
 
 
