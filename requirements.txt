@@ -1,0 +1,12 @@
+# Phase 1 (consistency engine). Versions are the ones this scaffold was tested with;
+# pin whatever you actually install on Tue Nov 10 with `pip freeze`.
+torch==2.8.0
+numpy==2.3.3
+networkx==3.5
+matplotlib==3.10.9
+pytest==8.4.2
+
+# Added in later phases:
+# pykeen        # Phase 2: RotatE, FB15k-237, WN18RR
+# faiss-cpu     # Phase 3: retrieval baseline
+# z3-solver     # Phase 4-5: constraint and termination checks

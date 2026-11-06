@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rtvm"
+version = "0.1.0"
+description = "RTVM Phase 1: sheaf holonomy consistency engine"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["rtvm*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "week3: exercises scheduled for week 3 (Nov 23-28)",
+    "week4: exercises scheduled for week 4 (Nov 30-Dec 5)",
+]
