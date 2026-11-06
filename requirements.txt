@@ -1,12 +1,21 @@
-# Phase 1 (consistency engine). Versions are the ones this scaffold was tested with;
-# pin whatever you actually install on Tue Nov 10 with `pip freeze`.
+# Tested with Python 3.13.7 in a project venv (.venv), CPU only:
+#   python -m venv .venv
+#   .venv/Scripts/python -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+#   .venv/Scripts/python -m pip install -r requirements.txt
+# On a GPU machine (Colab, A100) install the matching CUDA build of torch 2.8.0 instead.
+# `pip freeze > notes/freeze.txt` records the full dependency tree when a result is reported.
+
+# Phase 1 (consistency engine)
 torch==2.8.0
 numpy==2.3.3
 networkx==3.5
 matplotlib==3.10.9
 pytest==8.4.2
 
+# Phase 2 (RotatE baseline, FB15k-237, WN18RR); pulls in optuna, pystow, class-resolver
+pykeen==1.11.1
+scipy==1.18.1
+
 # Added in later phases:
-# pykeen        # Phase 2: RotatE, FB15k-237, WN18RR
 # faiss-cpu     # Phase 3: retrieval baseline
 # z3-solver     # Phase 4-5: constraint and termination checks

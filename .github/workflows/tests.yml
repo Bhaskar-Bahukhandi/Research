@@ -11,11 +11,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
+      # Same pinned versions as requirements.txt (Phase 1 section). PyKEEN is
+      # left out: the tests do not use it and it slows every run.
       - name: Install CPU-only PyTorch and the rest
         run: |
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy networkx matplotlib pytest
+          pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy==2.3.3 networkx==3.5 matplotlib==3.10.9 pytest==8.4.2
       # Unimplemented exercises show as SKIPPED, so CI stays green while you work.
       # Real failures in implemented code turn it red.
       - run: pytest -rs
