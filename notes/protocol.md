@@ -60,6 +60,17 @@ Each change keeps the original value visible.
   - **Not carried over:** the official schedule divides the learning rate by 10 at half the training steps. G2 trains every model to early stopping with one shared set of rules, so there is no step decay. The reproduction did not isolate this decay's effect. Adding a schedule needs its own dated note before any G2 config is written.
   - **QuatE:** before QuatE is used in S5 or S6, it gets the same check against its official code. The check could change which QuatE is used. QuatE is not part of the gate.
   - The reproduction runs used published model sizes (dimensions 1000 and 500) with test-split metrics, one seed each. No G2 configuration, search range or threshold is taken from their numbers. They decide only which model definition counts as "RotatE".
+- **2026-11-08 (before any negatives or paths were generated), triples with h = t, and how saved paths are committed.** These fill two gaps the protocol did not cover. The evidence is counts only: no model, label summary or feature was computed. Changes:
+  - **Triples with h = t:** a simple path from h to t is undefined when h = t. Such triples get no paths and n₁ = n₂ = n₃ = 0, so they are uncovered. The "covered" flag tells the combiners, as for any other uncovered triple.
+    - This applies to positives and negatives alike, including a negative whose replacement equals the other entity.
+    - Counts: FB15k-237 has 1,625 training, 90 validation and 91 test triples with h = t; WN18RR has 7, 2 and 0.
+    - Self-loop training facts are never part of a path, since a simple path cannot use them.
+  - **Committing saved data:** the Timing rule requires "the saved negatives and paths" to be committed before the test split is touched. For FB15k-237 validation and test, the path arrays are about 160 MB, above GitHub's 100 MB file limit.
+    - **Negatives:** committed to the repository as files.
+    - **Paths and path counts:** committed as a manifest giving each file's SHA-256 hash, shape and the commit of the code that generated it, together with the generation script. The files themselves are kept on Google Drive.
+    - **Before the first test evaluation:** the files are regenerated from the committed script and must reproduce the committed hashes. `rtvm.g2data.check_no_leakage` must pass on every path file.
+    - The Timing rule's "committed" means this manifest for paths.
+  - **Random streams (clarifying "seed 0"):** negatives for positive i, and paths for triple i, each use their own generator, `numpy.random.default_rng([0, i])`, with i the triple's position in its split's array. Results are then reproducible and independent of batching.
 
 ## G2 (H2) in full
 

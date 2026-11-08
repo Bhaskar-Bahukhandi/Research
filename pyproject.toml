@@ -20,4 +20,5 @@ testpaths = ["tests"]
 markers = [
     "week3: exercises scheduled for week 3 (Nov 23-28)",
     "week4: exercises scheduled for week 4 (Nov 30-Dec 5)",
+    "g2data: G2 data pipeline (rtvm/g2data.py): negatives, path counts, path sampler",
 ]
