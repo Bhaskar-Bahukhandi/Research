@@ -110,7 +110,13 @@ def evaluate_v1(model: HolonomyModel, data: HolonomyData, device) -> dict[str, f
 
 
 def train(config: HolonomyConfig, data: HolonomyData, device: str = "cpu",
-          checkpoint: str | Path | None = None, log=print) -> dict:
+          checkpoint: str | Path | None = None, log=print, deadline: float | None = None) -> dict:
+    """Train to early stopping (or `max_epochs`), resuming from `checkpoint` if it exists.
+
+    deadline: a time.time() value. Once it has passed, training stops right after the next
+    evaluation's checkpoint is saved, and the result has complete=False; calling train again
+    with the same checkpoint continues the run exactly (per-epoch random streams).
+    """
     device = torch.device(device)
     # Deterministic kernels: without them, multithreaded (CPU) or atomic (CUDA) gradient
     # accumulation in index backward makes reruns of one seed differ in the last bits.
@@ -137,6 +143,7 @@ def train(config: HolonomyConfig, data: HolonomyData, device: str = "cpu",
     train_keys = np.sort(fact_key(data.train[:, 0], data.train[:, 1], data.train[:, 2],
                                   data.num_entities, data.num_relations))
     start = time.time()
+    first_epoch, last_eval_time, last_eval_epoch = state.epoch, start, state.epoch
 
     while state.epoch < config.max_epochs and state.bad_evals < config.patience:
         epoch = state.epoch + 1
@@ -170,13 +177,21 @@ def train(config: HolonomyConfig, data: HolonomyData, device: str = "cpu",
                 torch.save(dict(config=asdict(config), model=model.state_dict(), optimizer=opt.state_dict(),
                                 state=asdict(state), best_weights=best_weights), tmp)
                 tmp.replace(ckpt)                        # atomic: a disconnect never leaves half a file
+            now = time.time()
+            per_epoch = (now - last_eval_time) / max(1, epoch - last_eval_epoch)   # includes this evaluation
+            last_eval_time, last_eval_epoch = now, epoch
             log(f"epoch {epoch}: loss {total / batches:.4f}  V1 stratified cycle AUC {auc:.4f}"
-                f"  (triple grouped AUC {metrics['triple_grouped_auc']:.4f}){'  best' if improved else ''}")
+                f"  (triple grouped AUC {metrics['triple_grouped_auc']:.4f}){'  best' if improved else ''}"
+                f"  [{per_epoch:.1f} s/epoch]")
+            if deadline is not None and now >= deadline:
+                break                                    # checkpoint just saved: resumable
 
+    complete = state.epoch >= config.max_epochs or state.bad_evals >= config.patience
     if best_weights is not None:
         model.load_state_dict(best_weights)
     return dict(config=asdict(config), best_v1_auc=state.best_auc, best_epoch=state.best_epoch,
-                epochs_run=state.epoch, history=state.history, train_seconds=time.time() - start,
+                epochs_run=state.epoch, complete=complete, epochs_this_process=state.epoch - first_epoch,
+                history=state.history, train_seconds=time.time() - start,
                 device=torch.cuda.get_device_name(device) if device.type == "cuda" else str(device),
                 tf32_training=config.tf32, evaluation="strict FP32", deterministic_algorithms=True,
                 versions=dict(torch=torch.__version__, cuda=torch.version.cuda, numpy=np.__version__),

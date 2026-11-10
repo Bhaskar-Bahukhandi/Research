@@ -1,0 +1,36 @@
+# G2 RotatE baseline: model definition, fixed values and tuning ranges.
+#
+# Decided 2026-11-10 (ranges proposed by Claude and accepted). The protocol requires this
+# file to be committed BEFORE the first tuning trial; after that, changes need a dated note.
+#
+# Model (protocol note 2026-11-08): the official-code RotatE, rtvm.baselines.PhaseRotatEInteraction
+# trained in PyKEEN. Score gamma - sum_i |h_i * exp(i theta_i) - t_i| (L1 over complex moduli),
+# theta = p * pi / rho with rho = (gamma + 2) / dim; entity and relation parameters
+# initialised uniformly in +-rho; relations not renormalised. Training negatives are
+# filtered against the training triples (official code; favours the baseline). No lr
+# step decay: every G2 model trains to early stopping under the same rules.
+#
+# Read by experiments/g2_search.py; trials are drawn as for configs/g2_holonomy.yaml.
+# The V1 score of a trial is the grouped AUC of PyKEEN's score_hrt (protocol, Models).
+
+model: rotate_official
+
+dim:                        # complex dimension; set by the parameter budget, not tuned
+  fb15k237: 68              # 1,988,796 parameters; budget 2.0M +- 5% (protocol note 2026-11-06)
+  wn18rr: 64                # 5,192,256; the holonomy model has 5.19M-5.20M there. Dim 68 would be
+                            # 5,516,772 (+6%, outside +-5%). Protocol note 2026-11-10 (WN18RR sizes).
+
+fixed:
+  num_negatives: 256        # shared with the holonomy model's single-fact term
+  batch_size: 1024          # shared by every G2 model
+  filtered_negatives: true  # official code (protocol note 2026-11-08)
+  loss: nssa                # self-adversarial negative sampling, margin = gamma
+  eval_every: 10
+  patience: 5
+  max_epochs: 1000
+  tf32: true                # training only (RotatE has no matmul, so it changes nothing); evaluation strict FP32
+
+search:                     # 20 trials, random search, trial seed 0, model seed 0
+  lr: {log_uniform: [3.0e-5, 3.0e-3]}           # Adam; official 5e-5 at dim 1000 with step decay
+  gamma: {choice: [3.0, 6.0, 9.0, 12.0, 18.0, 24.0]}   # around the RotatE paper's grid
+  temperature: {choice: [0.5, 1.0]}             # self-adversarial temperature (official: 1.0 FB, 0.5 WN)

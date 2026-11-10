@@ -93,6 +93,12 @@ Each change keeps the original value visible.
   - **Random streams, clarified:** "i the triple's position in its split's array" means the following.
     - For training triples and for positives, i is the row of the training, validation or test array.
     - For negatives, the (m, 10, 3) array is flattened row-major, so negative j of positive i uses stream i · 10 + j. This is what `experiments/g2_build_data.py` does.
+- **2026-11-10 (before any G2 tuning trial), WN18RR model sizes; configs committed.** Approved by me on 10 Nov 2026. The note of 2026-11-06 fixed the budget on FB15k-237 only ("2.0M ± 5%", with RotatE dimension 68 and QuatE dimension 34). WN18RR has 40,559 entities, so every model is larger there. Evidence: parameter counts only, from `rtvm.utils.count_parameters`; no model was trained.
+  - **Holonomy model on WN18RR:** 5,194,368 (rank 1), 5,197,184 (rank 2), 5,202,816 (rank 4).
+  - **At the FB15k-237 dimensions** RotatE has 5,516,772 and QuatE 5,517,520 parameters on WN18RR, about +6%: outside ±5%.
+  - **Change:** on WN18RR the budget is **5.2M ± 5%** (4.94M–5.46M), and the dimensions are **RotatE 64** (5,192,256) and **QuatE 32** (5,192,960), the closest match to the holonomy model. They are set by the budget and not tuned, as on FB15k-237. FB15k-237 is unchanged. WN18RR is secondary (S1) and not part of the gate.
+  - **Configs:** `configs/g2_holonomy.yaml`, `configs/g2_rotate.yaml` and `configs/g2_quate.yaml` are committed together with this note, before any trial, and are run by `experiments/g2_search.py`, which records each config's SHA-256 and refuses to continue a search if the file changes. Design choices recorded in the holonomy config: corrupted cycles close the true path with a different relation (uniform r′ ≠ r, rejected while (h, r′, t) is a training fact); the single-fact term is self-adversarial NSSA at weight 1, with α₁ and α₂ searched over [0.01, 10].
+  - **QuatE stays provisional:** its config uses PyKEEN's QuatE until the official-code check of the 2026-11-08 note. No QuatE trial runs before that check; if the check changes the model, the config changes with a dated note first.
 
 ## G2 (H2) in full
 

@@ -38,6 +38,7 @@ import functools
 import json
 import math
 import platform
+import sys
 import time
 from pathlib import Path
 
@@ -47,9 +48,11 @@ import pykeen
 from pykeen.datasets import get_dataset
 from pykeen.evaluation import RankBasedEvaluator
 from pykeen.models import ERModel, RotatE
-from pykeen.nn.modules import Interaction
 from pykeen.training import SLCWATrainingLoop
 from pykeen.utils import set_random_seed
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from rtvm.baselines import PhaseRotatEInteraction  # noqa: E402  (the class used by G2)
 
 OFFICIAL = {  # best_config.sh, RotatE
     "fb15k237": dict(batch=1024, negatives=256, dim=1000, gamma=9.0, alpha=1.0, lr=5e-5, steps=100_000),
@@ -58,18 +61,6 @@ OFFICIAL = {  # best_config.sh, RotatE
     "nations": dict(batch=128, negatives=16, dim=32, gamma=6.0, alpha=0.5, lr=1e-3, steps=600),
 }
 PUBLISHED_MRR = {"fb15k237": 0.338, "wn18rr": 0.476}
-
-
-class PhaseRotatEInteraction(Interaction):
-    """Official RotatE score: -sum_i |h_i * exp(i * theta_i) - t_i|, theta = r * pi / range."""
-
-    def __init__(self, embedding_range: float):
-        super().__init__()
-        self.scale = math.pi / embedding_range
-
-    def forward(self, h: torch.Tensor, r: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        rotation = torch.polar(torch.ones_like(r), r * self.scale)
-        return -(h * rotation - t).abs().sum(dim=-1)
 
 
 def build_model(variant: str, tf, hp: dict, seed: int):

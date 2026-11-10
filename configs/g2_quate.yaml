@@ -1,0 +1,35 @@
+# G2 QuatE baseline (secondary: S5 and S6 only, not part of the gate).
+#
+# Decided 2026-11-10 (ranges proposed by Claude and accepted). Commit BEFORE the first
+# tuning trial; after that, changes need a dated note.
+#
+# PROVISIONAL MODEL DEFINITION. Protocol note 2026-11-08: "before QuatE is used in S5 or
+# S6, it gets the same check against its official code. The check could change which QuatE
+# is used." Until that check is done this file uses PyKEEN 1.11.1's QuatE: quaternion
+# entities and relations, relations normalised to unit quaternions, BCE-with-logits
+# (softplus) loss, L2 (LpRegularizer, p = 2, normalize = True) on entities and relations
+# with one shared weight. If the check changes the definition, this file changes with a
+# dated note, before any QuatE trial.
+#
+# Read by experiments/g2_search.py; trials are drawn as for configs/g2_holonomy.yaml.
+# The V1 score of a trial is the grouped AUC of PyKEEN's score_hrt (protocol, Models).
+
+model: quate_pykeen
+
+dim:                        # quaternion dimension (4 reals each); set by the budget, not tuned
+  fb15k237: 34              # 2,004,912 parameters; budget 2.0M +- 5%
+  wn18rr: 32                # 5,192,960; dim 34 would be 5,517,520 (+6%). Protocol note 2026-11-10 (WN18RR sizes).
+
+fixed:
+  num_negatives: 256        # shared with the other G2 models
+  batch_size: 1024
+  filtered_negatives: false # filtering is a RotatE-only choice (protocol note 2026-11-08)
+  loss: bcewithlogits
+  eval_every: 10
+  patience: 5
+  max_epochs: 1000
+  tf32: true                # training only; evaluation strict FP32
+
+search:                     # 20 trials, random search, trial seed 0, model seed 0
+  lr: {log_uniform: [1.0e-4, 3.0e-3]}           # Adam (the official code uses Adagrad)
+  regularizer_weight: {log_uniform: [1.0e-3, 1.0]}   # PyKEEN default 0.3 / expected norm
