@@ -54,9 +54,46 @@ def test_training_runs_and_evaluates(data):
 def test_training_is_deterministic(data):
     a = train(small_config(), data, log=lambda *_: None)
     b = train(small_config(), data, log=lambda *_: None)
-    # same draws and same AUC; the loss may differ in the last bits (multithreaded float sums)
-    assert [h["v1_auc"] for h in a["history"]] == [h["v1_auc"] for h in b["history"]]
-    assert [h["loss"] for h in a["history"]] == pytest.approx([h["loss"] for h in b["history"]], rel=1e-5)
+    assert a["history"] == b["history"]                # exact: deterministic algorithms are on
+    assert a["deterministic_algorithms"]
+
+
+class Interrupt(Exception):
+    pass
+
+
+def test_resume_after_interruption_matches_uninterrupted_run(data, tmp_path):
+    full = train(small_config(max_epochs=6), data, log=lambda *_: None)
+    ckpt = tmp_path / "run.pt"
+
+    def stop_after_epoch_2(msg):
+        if msg.startswith("epoch 2:"):
+            raise Interrupt                             # simulated disconnect, after the checkpoint is saved
+
+    with pytest.raises(Interrupt):
+        train(small_config(max_epochs=6), data, checkpoint=ckpt, log=stop_after_epoch_2)
+    msgs = []
+    resumed = train(small_config(max_epochs=6), data, checkpoint=ckpt, log=msgs.append)
+    assert msgs[0] == "resumed at epoch 2"
+    assert resumed["history"] == full["history"] and resumed["best_epoch"] == full["best_epoch"]
+
+
+def test_evaluate_v1_ignores_negatives_of_uncovered_positives(data):
+    """Protocol note 2026-11-10: cycles of covered positives and of THEIR covered negatives."""
+    import copy
+
+    import torch
+
+    from rtvm.holonomy_model import HolonomyModel
+    from rtvm.train_holonomy import evaluate_v1
+
+    model = HolonomyModel(E, R, rank=2, generator=torch.Generator().manual_seed(0))
+    d = copy.deepcopy(data)
+    d.v1_pos_steps[0] = 2 * R                           # positive 0 now has no path
+    d.v1_neg_steps[0, :, 0, 0] = 1                      # ...but its negatives all have one
+    blanked = copy.deepcopy(d)
+    blanked.v1_neg_steps[0] = 2 * R                     # same, with those negatives' cycles removed
+    assert evaluate_v1(model, d, "cpu")["stratified"] == evaluate_v1(model, blanked, "cpu")["stratified"]
 
 
 def test_early_stopping_counts_evaluations(data):

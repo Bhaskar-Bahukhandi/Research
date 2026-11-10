@@ -22,17 +22,24 @@ def stratified_cycle_auc(pos_defect: np.ndarray, pos_length: np.ndarray, pos_rel
     pos_defect, neg_defect = np.asarray(pos_defect, float), np.asarray(neg_defect, float)
     if np.isnan(pos_defect).any() or np.isnan(neg_defect).any():
         return float("nan")
+    # one sort by stratum, then one rank computation per stratum slice (no full pass per stratum)
+    length = np.concatenate([np.asarray(pos_length), np.asarray(neg_length)]).astype(np.int64)
+    relation = np.concatenate([np.asarray(pos_relation), np.asarray(neg_relation)]).astype(np.int64)
+    score = -np.concatenate([pos_defect, neg_defect])          # higher = more plausible
+    is_pos = np.r_[np.ones(len(pos_defect), bool), np.zeros(len(neg_defect), bool)]
+    order = np.lexsort((relation, length))
+    length, relation, score, is_pos = length[order], relation[order], score[order], is_pos[order]
+    change = np.flatnonzero((np.diff(length) != 0) | (np.diff(relation) != 0)) + 1
     total, weight = 0.0, 0
-    pos_key = np.stack([np.asarray(pos_length), np.asarray(pos_relation)], axis=1)
-    neg_key = np.stack([np.asarray(neg_length), np.asarray(neg_relation)], axis=1)
-    for key in np.unique(pos_key, axis=0):
-        p = pos_defect[(pos_key == key).all(axis=1)]
-        n = neg_defect[(neg_key == key).all(axis=1)]
-        if not len(n):
+    for lo, hi in zip(np.r_[0, change], np.r_[change, len(score)]):
+        p_mask = is_pos[lo:hi]
+        n_pos = int(p_mask.sum())
+        n_neg = (hi - lo) - n_pos
+        if n_pos == 0 or n_neg == 0:
             continue
-        ranks = rankdata(-np.concatenate([p, n]))           # higher rank = more plausible
-        auc = (ranks[:len(p)].sum() - len(p) * (len(p) + 1) / 2) / (len(p) * len(n))
-        total, weight = total + auc * len(p), weight + len(p)
+        ranks = rankdata(score[lo:hi])
+        auc = (ranks[p_mask].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
+        total, weight = total + auc * n_pos, weight + n_pos
     return total / weight if weight else float("nan")
 
 

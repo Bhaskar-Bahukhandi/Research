@@ -7,9 +7,12 @@ north-west). Every cycle closes exactly in the ground truth (east then north = n
 so a model that learns relation rotations which compose like the moves should give true
 triples low holonomy and entity-swapped negatives high holonomy.
 
-Uses no real dataset, so it cannot leak anything into G2 tuning. It checks that:
-  1. with the cycle term, V1 grouped AUC of the holonomy score rises well above 0.5;
-  2. without it (alpha1 = alpha2 = 0), the holonomy score learns much less.
+Uses no real dataset, so it cannot leak anything into G2 tuning. It prints, and asserts:
+  1. the triple-level V1 grouped AUC is already high for an UNTRAINED model (path-length
+     mix), which is why the protocol note of 2026-11-10 replaced it for early stopping;
+  2. with the cycle term and early stopping on the stratified cycle AUC, the kept weights
+     separate same-length cycles (length-matched AUC >= 0.95);
+  3. without the cycle term (alpha1 = alpha2 = 0), the stratified cycle AUC stays low.
 Hyperparameters here are chosen for this toy only and say nothing about G2's ranges.
 """
 from __future__ import annotations
@@ -98,12 +101,19 @@ def main() -> None:
     runs = (("cycle term, early stopping", dict(alpha1=1.0, alpha2=1.0)),
             ("cycle term, 200 epochs", dict(alpha1=1.0, alpha2=1.0, eval_every=200, patience=10 ** 6)),
             ("single term, 200 epochs", dict(alpha1=0.0, alpha2=0.0, eval_every=200, patience=10 ** 6)))
+    assert m0["triple_grouped_auc"] > 0.9, "expected the path-length shortcut on the untrained model"
+    results = {}
     for name, changes in runs:
         out = train(HolonomyConfig(**{**base, **changes}), data, log=lambda *_: None)
+        results[name] = (out, length_matched_auc(out["model"], data))
         best = next(h for h in out["history"] if h["epoch"] == out["best_epoch"])
         print(f"{name:26s}: triple grouped AUC {best['v1_triple_grouped_auc']:.3f} | stratified cycle AUC "
               f"{out['best_v1_auc']:.3f} | length-matched {fmt(length_matched_auc(out['model'], data))} "
               f"(weights from epoch {out['best_epoch']} of {out['epochs_run']})")
+    stopped, matched = results["cycle term, early stopping"]
+    assert min(matched.values()) >= 0.95, f"early-stopped weights did not learn composition: {matched}"
+    assert results["single term, 200 epochs"][0]["best_v1_auc"] < 0.8, "single-term model should not learn cycles"
+    print("All checks passed.")
     print("Before the 2026-11-10 note, early stopping used the triple grouped AUC, which is 0.98 untrained and\n"
           "saturated at epoch 10, so it kept weights with length-matched AUC 0.81. Early stopping now uses the\n"
           "stratified cycle AUC (protocol note of 2026-11-10).")

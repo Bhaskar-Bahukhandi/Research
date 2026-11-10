@@ -18,7 +18,11 @@ from a script or a test; checkpoints resume automatically.
 from __future__ import annotations
 
 import copy
+import os
 import time
+
+# Required by torch.use_deterministic_algorithms for cuBLAS; must be set before CUDA starts.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -64,6 +68,7 @@ class HolonomyData:
     v1_pos_steps: np.ndarray     # (m, K, MAX_LEN)
     v1_neg: np.ndarray           # (m, 10, 3)
     v1_neg_steps: np.ndarray     # (m, 10, K, MAX_LEN)
+    provenance: dict | None = None   # manifest hash and data-build commit (load_data), copied into run logs
 
 
 @dataclass
@@ -96,14 +101,20 @@ def evaluate_v1(model: HolonomyModel, data: HolonomyData, device) -> dict[str, f
                                         device)
     pos, pos_cov = triple_scores_from_cycles(m, p_tri, p_def)
     neg, neg_cov = triple_scores_from_cycles(m * k, n_tri, n_def)
+    # note 2026-11-10: cycles of covered positives and of THEIR covered negatives only
+    own = pos_cov[n_tri // k]
     return dict(
-        stratified=stratified_cycle_auc(p_def, p_len, pos_rel[p_tri], n_def, n_len, neg_rel[n_tri]),
+        stratified=stratified_cycle_auc(p_def, p_len, pos_rel[p_tri],
+                                        n_def[own], n_len[own], neg_rel[n_tri[own]]),
         triple_grouped_auc=grouped_auc(-pos, -neg.reshape(m, k), pos_cov, neg_cov.reshape(m, k)))
 
 
 def train(config: HolonomyConfig, data: HolonomyData, device: str = "cpu",
           checkpoint: str | Path | None = None, log=print) -> dict:
     device = torch.device(device)
+    # Deterministic kernels: without them, multithreaded (CPU) or atomic (CUDA) gradient
+    # accumulation in index backward makes reruns of one seed differ in the last bits.
+    torch.use_deterministic_algorithms(True)
     gen = torch.Generator().manual_seed(config.seed)
     model = HolonomyModel(data.num_entities, data.num_relations, rank=config.rank,
                           rotation_init=config.rotation_init, entity_init=config.entity_init,
@@ -153,23 +164,23 @@ def train(config: HolonomyConfig, data: HolonomyData, device: str = "cpu",
                 state.bad_evals += 1
             state.history.append(dict(epoch=epoch, loss=total / batches, v1_auc=auc,
                                       v1_triple_grouped_auc=metrics["triple_grouped_auc"]))
-            log(f"epoch {epoch}: loss {total / batches:.4f}  V1 stratified cycle AUC {auc:.4f}"
-                f"  (triple grouped AUC {metrics['triple_grouped_auc']:.4f}){'  best' if improved else ''}")
-            if ckpt:
+            if ckpt:                                     # save before logging: a logged epoch is never lost
                 ckpt.parent.mkdir(parents=True, exist_ok=True)
                 tmp = ckpt.with_suffix(".tmp")
                 torch.save(dict(config=asdict(config), model=model.state_dict(), optimizer=opt.state_dict(),
                                 state=asdict(state), best_weights=best_weights), tmp)
                 tmp.replace(ckpt)                        # atomic: a disconnect never leaves half a file
+            log(f"epoch {epoch}: loss {total / batches:.4f}  V1 stratified cycle AUC {auc:.4f}"
+                f"  (triple grouped AUC {metrics['triple_grouped_auc']:.4f}){'  best' if improved else ''}")
 
     if best_weights is not None:
         model.load_state_dict(best_weights)
     return dict(config=asdict(config), best_v1_auc=state.best_auc, best_epoch=state.best_epoch,
                 epochs_run=state.epoch, history=state.history, train_seconds=time.time() - start,
                 device=torch.cuda.get_device_name(device) if device.type == "cuda" else str(device),
-                tf32_training=config.tf32, evaluation="strict FP32",
+                tf32_training=config.tf32, evaluation="strict FP32", deterministic_algorithms=True,
                 versions=dict(torch=torch.__version__, cuda=torch.version.cuda, numpy=np.__version__),
-                model=model)
+                data_provenance=data.provenance, model=model)
 
 
 def _batch_loss(model, data, idx, n_paths, train_keys, config, rng, device):
@@ -215,27 +226,46 @@ def load_data(dataset: str, saved: str | Path = "saved/g2", data: str | Path = "
     train = ds.training.mapped_triples.numpy().astype(np.int64)
     valid = ds.validation.mapped_triples.numpy().astype(np.int64)
     small, large = Path(saved) / dataset, Path(data) / dataset
-    # Path codes are row indices into PyKEEN's arrays: refuse if the id mapping or row order changed.
     import hashlib
     import json
-    inputs = json.loads((small / "manifest.json").read_text())["inputs"]
+
+    def sha256(path: Path) -> str:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(1 << 20), b""):
+                h.update(block)
+        return h.hexdigest()
+
+    manifest_path = small / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    # Path codes are row indices into PyKEEN's arrays: refuse if the id mapping or row order changed.
     for name, arr in (("train", train), ("valid", valid)):
         digest = hashlib.sha256(np.ascontiguousarray(arr, dtype=np.int64).tobytes()).hexdigest()
-        if digest != inputs[f"{name}_sha256"]:
+        if digest != manifest["inputs"][f"{name}_sha256"]:
             raise ValueError(f"{dataset} {name} triples differ from the manifest: rebuild or fix the PyKEEN version")
-    v1 = np.load(small / "valid_v1_index.npy")
-    neg = np.load(small / "valid_negatives.npy").astype(np.int64)
-    m, k = neg.shape[:2]
+
+    def load(name: str) -> np.ndarray:
+        """Load one saved file, refusing it if its hash differs from the manifest (stale Drive copy)."""
+        entry = manifest["files"][name]
+        path = (small if entry["area"] == "saved" else large) / entry["file"]
+        if sha256(path) != entry["sha256"]:
+            raise ValueError(f"{path} does not match {manifest_path}: copy the right files or rebuild")
+        return np.load(path)
+
     def to_steps(codes):
         return steps_from_codes(codes, train[:, 1], ds.num_relations)
 
-    pos_paths = np.load(large / "valid_pos_paths.npy")[v1]
-    neg_paths = np.load(large / "valid_neg_paths.npy").reshape(m, k, *pos_paths.shape[1:])[v1]
+    v1 = load("valid_v1_index")
+    neg = load("valid_negatives").astype(np.int64)
+    m, k = neg.shape[:2]
+    pos_paths = load("valid_pos_paths")[v1]
+    neg_paths = load("valid_neg_paths").reshape(m, k, *pos_paths.shape[1:])[v1]
     return HolonomyData(
         num_entities=ds.num_entities, num_relations=ds.num_relations, train=train,
-        train_steps=to_steps(np.load(large / "train_paths.npy")),
+        train_steps=to_steps(load("train_paths")),
         v1_pos=valid[v1], v1_pos_steps=to_steps(pos_paths),
-        v1_neg=neg[v1], v1_neg_steps=to_steps(neg_paths))
+        v1_neg=neg[v1], v1_neg_steps=to_steps(neg_paths),
+        provenance=dict(manifest_sha256=sha256(manifest_path), data_code_commit=manifest["code"]["commit"]))
 
 
 def load_config(path: str | Path, **overrides) -> HolonomyConfig:

@@ -45,7 +45,9 @@ sys.path.insert(0, str(ROOT))
 from rtvm.g2data import (TrainGraph, check_no_leakage, count_paths, sample_negatives,  # noqa: E402
                          sample_paths, split_validation)
 
-CODE_PATHS = ["rtvm", "experiments/g2_build_data.py"]
+# Everything the build's output depends on. Later G2 code (features, combiners, bootstrap)
+# lives elsewhere in rtvm/ and may change without invalidating these files.
+CODE_PATHS = ["rtvm/__init__.py", "rtvm/g2data.py", "experiments/g2_build_data.py"]
 
 
 def sha256(path: Path) -> str:
@@ -62,7 +64,11 @@ def array_fingerprint(a: np.ndarray) -> str:
 
 
 def git(*args: str) -> str:
-    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    """Run git and fail closed: any git error stops the script instead of reading as 'no output'."""
+    done = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+    if done.returncode != 0:
+        sys.exit(f"git {' '.join(args)} failed: {done.stderr.strip()}")
+    return done.stdout.strip()
 
 
 def versions() -> dict:
@@ -163,13 +169,16 @@ def main() -> None:
 
     if args.verify:
         rel = manifest_path.resolve().relative_to(ROOT).as_posix()
-        committed = git("show", f"HEAD:{rel}")
-        if not committed:
-            sys.exit(f"{rel} is not committed: commit the manifest before verifying against it")
-        expected = json.loads(committed)
-        changed = git("diff", "--name-only", expected["code"]["commit"], "HEAD", "--", *CODE_PATHS)
+        expected = json.loads(git("show", f"HEAD:{rel}"))          # fails if the manifest is not committed
+        commit = expected["code"]["commit"]
+        if expected["code"]["dirty"]:
+            sys.exit("the committed manifest was built from uncommitted code: rebuild from a clean tree")
+        git("cat-file", "-e", f"{commit}^{{commit}}")              # fails if that commit is missing (shallow clone)
+        if git("status", "--porcelain", "--", *CODE_PATHS):
+            sys.exit(f"uncommitted changes in {CODE_PATHS}: verification must run committed code")
+        changed = git("diff", "--name-only", commit, "HEAD", "--", *CODE_PATHS)
         if changed:
-            sys.exit(f"code changed since the manifest's commit {expected['code']['commit'][:7]}: {changed.split()}")
+            sys.exit(f"build code changed since the manifest's commit {commit[:7]}: {changed.split()}")
         if versions() != expected["versions"]:
             print(f"WARNING: library versions differ from the manifest: {versions()} vs {expected['versions']}")
         with tempfile.TemporaryDirectory() as tmp:
