@@ -170,3 +170,39 @@ def test_config_hash_ignores_line_endings(tmp_path):
     (tmp_path / "lf.yaml").write_bytes(b"a: 1\nb: 2\n")
     (tmp_path / "crlf.yaml").write_bytes(b"a: 1\r\nb: 2\r\n")
     assert file_sha256(tmp_path / "lf.yaml") == file_sha256(tmp_path / "crlf.yaml")
+
+
+def test_exact_filterer_matches_python_set_filterer():
+    """Protocol note 2026-11-10 (exact filtering): same answer as PyKEEN's exact set filter."""
+    import torch
+    from pykeen.sampling.filtering import PythonSetFilterer
+
+    from rtvm.baselines import ExactFilterer
+
+    gen = torch.Generator().manual_seed(0)
+    triples = torch.unique(torch.stack([torch.randint(0, 40, (500,), generator=gen),
+                                        torch.randint(0, 5, (500,), generator=gen),
+                                        torch.randint(0, 40, (500,), generator=gen)], dim=1), dim=0)
+    exact, ref = ExactFilterer(triples), PythonSetFilterer(triples)
+    cand = torch.stack([torch.randint(0, 42, (64, 30), generator=gen),     # ids up to 41: beyond the training max
+                        torch.randint(0, 6, (64, 30), generator=gen),
+                        torch.randint(0, 42, (64, 30), generator=gen)], dim=-1)
+    cand[:, :5] = triples[torch.randint(0, len(triples), (64, 5), generator=gen)]   # some true triples
+    assert torch.equal(exact.contains(cand), ref.contains(cand))
+    assert exact.contains(cand).sum() >= 64 * 5
+    assert torch.equal(exact(cand), ~ref.contains(cand))                   # forward: True = valid negative
+
+
+def test_rotate_uses_the_exact_filterer(data, monkeypatch):
+    """Filtered training negatives go through ExactFilterer (not PyKEEN's default Bloom filter)."""
+    from rtvm import baselines
+
+    calls = []
+    original = baselines.ExactFilterer.contains
+    monkeypatch.setattr(baselines.ExactFilterer, "contains",
+                        lambda self, batch: calls.append(1) or original(self, batch))
+    assert baselines.train(small(max_epochs=2), data, log=lambda *_: None)["complete"]
+    assert calls                                       # rotate_official: filtered, through ExactFilterer
+    calls.clear()
+    baselines.train(small("quate_pykeen", max_epochs=2), data, log=lambda *_: None)
+    assert not calls                                   # QuatE: unfiltered

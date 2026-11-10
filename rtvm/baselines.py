@@ -28,6 +28,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from pykeen.nn.modules import Interaction
+from pykeen.sampling.filtering import Filterer
 
 from .g2eval import grouped_auc
 
@@ -86,6 +87,40 @@ class PhaseRotatEInteraction(Interaction):
     def forward(self, h: torch.Tensor, r: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         rotation = torch.polar(torch.ones_like(r), r * self.scale)
         return -(h * rotation - t).abs().sum(dim=-1)
+
+
+class ExactFilterer(Filterer):
+    """Exact training-negative filter: a sorted array of training-triple keys and a binary search.
+
+    Replaces PyKEEN's default BloomFilterer (protocol note 2026-11-10, exact filtering). The Bloom
+    filter is approximate (it also drops about 0.1% of valid negatives on FB15k-237) and was half
+    of RotatE's epoch time on a Kaggle T4; this one gives the same answer as PyKEEN's exact
+    PythonSetFilterer. Like every PyKEEN filterer, a filtered negative is dropped (masked), not
+    redrawn.
+
+    device: where the sorted keys live and the search runs. PyKEEN samples negatives on the CPU
+    inside its data loader; on a Kaggle T4 an exact CPU search still cost about 8 s per FB15k-237
+    epoch, so train() passes the training device and the search runs there (same answer).
+    """
+
+    def __init__(self, mapped_triples: torch.Tensor, device: str | torch.device | None = None):
+        super().__init__()
+        mapped_triples = torch.as_tensor(mapped_triples, dtype=torch.long)
+        self.num_entities = int(mapped_triples[:, [0, 2]].max()) + 1
+        self.num_relations = int(mapped_triples[:, 1].max()) + 1
+        keys = torch.sort(self._key(mapped_triples)).values
+        self.register_buffer("keys", keys.to(device) if device is not None else keys, persistent=False)
+
+    def _key(self, triples: torch.Tensor) -> torch.Tensor:
+        return (triples[..., 0] * self.num_relations + triples[..., 1]) * self.num_entities + triples[..., 2]
+
+    def contains(self, batch: torch.Tensor) -> torch.Tensor:
+        b = batch.to(self.keys.device, non_blocking=True)
+        key = self._key(b)
+        # a candidate with an id beyond the training maximum must not alias a training key
+        inside = (b[..., 0] < self.num_entities) & (b[..., 2] < self.num_entities) & (b[..., 1] < self.num_relations)
+        pos = torch.searchsorted(self.keys, key).clamp_max(len(self.keys) - 1)
+        return ((self.keys[pos] == key) & inside).to(batch.device)
 
 
 def build_model(config: BaselineConfig, triples_factory):
@@ -166,7 +201,9 @@ def train(config: BaselineConfig, data: BaselineData, device: str = "cpu",
         model=model, triples_factory=data.training,
         optimizer=torch.optim.Adam(model.get_grad_params(), lr=config.lr),
         negative_sampler="basic",
-        negative_sampler_kwargs=dict(num_negs_per_pos=config.num_negatives, filtered=config.filtered_negatives),
+        negative_sampler_kwargs=dict(num_negs_per_pos=config.num_negatives, filtered=config.filtered_negatives,
+                                     filterer=ExactFilterer if config.filtered_negatives else None,
+                                     filterer_kwargs=dict(device=str(device)) if config.filtered_negatives else None),
         automatic_memory_optimization=False)       # fixed batch size: no probing, no sub-batching
     state, best_weights = RunState(), None
 
