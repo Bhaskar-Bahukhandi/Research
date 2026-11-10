@@ -112,13 +112,20 @@ def path_vertices(graph: TrainGraph, h: int, codes) -> list[int]:
     return out
 
 
-def check_no_leakage(paths: np.ndarray, train: np.ndarray, eval_triples: np.ndarray) -> None:
+def check_no_leakage(paths: np.ndarray, train: np.ndarray, eval_triples: np.ndarray,
+                     own_edges: np.ndarray | None = None) -> None:
     """Raise if any saved path step is not a training fact, or is a validation/test fact.
 
     Run on every saved path array before it is committed. Checks that every nonzero
     code names a valid training edge id, and that no edge used by any path equals a
-    triple in `eval_triples` (validation and test positives).
+    triple in `eval_triples` (validation and test positives). With own_edges (training
+    triples), also checks that no triple's paths use its own edge.
     """
+    if own_edges is not None:
+        own = np.asarray(own_edges)
+        steps = np.abs(np.asarray(paths)).reshape(len(own), -1) - 1
+        if ((steps == own[:, None]) & (own[:, None] >= 0)).any():
+            raise AssertionError("a training triple's paths use its own edge")
     train = np.asarray(train)
     codes = np.asarray(paths).ravel()
     codes = codes[codes != 0]
@@ -267,8 +274,35 @@ def count_paths(graph: TrainGraph, triples: np.ndarray, own_edges: np.ndarray | 
         Work out that correction by hand first (inclusion-exclusion; mind the walk
         h-t-h-t, which is counted in both), then the change when one h-t edge is removed.
     Compute rows in chunks of `chunk` triples, as structure_check.walks does.
+
+    Derivation (your hand proof, Week 1): for h != t and no loops, a length-3 walk
+    h-a-b-t repeats a vertex only if b = h or a = t, and both only for h-t-h-t, so
+        n3 = (A^3)_ht - A_ht ((A^2)_hh + (A^2)_tt) + A_ht^3,
+    where (A^2)_vv = sum_a A_va^2 (not the degree, in a multigraph). Removing the own
+    h-t edge changes only n1: a simple path of length 2 or 3 cannot use an h-t edge.
     """
-    raise NotImplementedError("count_paths")
+    tr = np.asarray(triples, dtype=np.int64)
+    out = np.zeros((len(tr), 3), dtype=np.int64)
+    if len(tr) == 0:
+        return out
+    A = graph.adjacency().astype(np.int64)
+    sq = np.asarray(A.multiply(A).sum(axis=1)).ravel()          # (A^2)_vv
+    h, t = tr[:, 0], tr[:, 2]
+    for s in range(0, len(tr), chunk):
+        hh, tt = h[s:s + chunk], t[s:s + chunk]
+        H, T = A[hh], A[tt]
+        n1 = np.asarray(A[hh, tt]).ravel()
+        n2 = np.asarray(H.multiply(T).sum(axis=1)).ravel()
+        walks3 = np.asarray((H @ A).multiply(T).sum(axis=1)).ravel()
+        n3 = walks3 - n1 * (sq[hh] + sq[tt]) + n1 ** 3
+        out[s:s + chunk] = np.stack([n1, n2, n3], axis=1)
+    if own_edges is not None:
+        own = (np.asarray(own_edges) >= 0) & (h != t)          # self-loop facts are not in A
+        if (out[own, 0] < 1).any():
+            raise ValueError("an own edge was given for a triple with no h-t training edge")
+        out[own, 0] -= 1
+    out[h == t] = 0
+    return out
 
 
 def sample_paths(graph: TrainGraph, triples: np.ndarray, own_edges: np.ndarray | None = None,
@@ -295,4 +329,94 @@ def sample_paths(graph: TrainGraph, triples: np.ndarray, own_edges: np.ndarray |
     replacement from range(n3), and map each index to a path through the cumulative
     weights. That avoids listing all n3 paths.
     """
-    raise NotImplementedError("sample_paths")
+    tr = np.asarray(triples, dtype=np.int64)
+    out = np.zeros((len(tr), k, MAX_LEN), dtype=np.int32)
+    for i, (h, _, t) in enumerate(tr.tolist()):
+        rng = np.random.default_rng([seed, i])
+        own = -1 if own_edges is None else int(own_edges[i])
+        for j, path in enumerate(_paths_for(graph, h, t, own, k, rng)):
+            out[i, j, :len(path)] = path
+    return out
+
+
+def _signed(edges: np.ndarray, forward: np.ndarray) -> np.ndarray:
+    """Codes for leaving a vertex along its incidences."""
+    return np.where(forward, edges + 1, -(edges + 1))
+
+
+def _side(graph: TrainGraph, v: int, banned: int, own: int):
+    """Neighbours of v other than `banned`, without the own edge, grouped by neighbour.
+
+    Returns (nbrs, first, count, codes): nbrs sorted; the edges from v to nbrs[j] are
+    codes[first[j]: first[j] + count[j]], as codes for leaving v (sorted by edge id).
+    """
+    e, o, f = graph.incidences(v)
+    keep = (o != banned) & (e != own)
+    e, o, f = e[keep], o[keep], f[keep]
+    order = np.lexsort((e, o))
+    e, o, f = e[order], o[order], f[order]
+    nbrs, first, count = np.unique(o, return_index=True, return_counts=True)
+    return nbrs, first, count, _signed(e, f)
+
+
+def _pick(weights: np.ndarray, radix: np.ndarray, room: int, rng: np.random.Generator):
+    """All path indices if they fit in `room`, else `room` drawn uniformly without
+    replacement; each index is mapped to (unit u, outer choices p, q) by mixed radix."""
+    total = int(weights.sum())
+    idx = np.arange(total) if total <= room else np.sort(rng.choice(total, room, replace=False))
+    cum = np.cumsum(weights)
+    u = np.searchsorted(cum, idx, side="right")
+    off = idx - (cum[u] - weights[u])
+    return total, u, off // radix[u], off % radix[u]
+
+
+def _paths_for(graph: TrainGraph, h: int, t: int, own: int, room: int, rng: np.random.Generator):
+    """The protocol's tiered path choice for one triple, as a list of code tuples."""
+    if h == t:
+        return []
+    out: list[tuple[int, ...]] = []
+
+    # length 1: parallel facts between h and t
+    e, o, f = graph.incidences(h)
+    m = (o == t) & (e != own)
+    tier = sorted((int(c),) for c in _signed(e[m], f[m]))
+    if len(tier) > room:
+        return sorted(tier[j] for j in rng.choice(len(tier), room, replace=False))
+    out += tier
+    room -= len(tier)
+    if room == 0:
+        return out
+
+    hn, hf, hc, hcode = _side(graph, h, t, own)
+    tn, tf, tc, tcode = _side(graph, t, h, own)
+
+    # length 2: h - a - t through each common neighbour a; arriving at t reverses t's leaving code
+    _, ih, it = np.intersect1d(hn, tn, assume_unique=True, return_indices=True)
+    total, u, p, q = _pick(hc[ih] * tc[it], tc[it], room, rng)
+    tier = sorted((int(hcode[hf[ih[x]] + a]), int(-tcode[tf[it[x]] + b])) for x, a, b in zip(u, p, q))
+    out += tier
+    if total > room:
+        return out
+    room -= total
+    if room == 0:
+        return out
+
+    # length 3: h - a - b - t, one unit per middle step a -> b; iterate from the cheaper end
+    cost = lambda nbrs: int((graph.indptr[nbrs + 1] - graph.indptr[nbrs]).sum())   # noqa: E731
+    flip = cost(tn) < cost(hn)
+    X, Y = ((tn, tf, tc, tcode), (hn, hf, hc, hcode)) if flip else ((hn, hf, hc, hcode), (tn, tf, tc, tcode))
+    xn, xf, xc, xcode = X
+    yn, yf, yc, ycode = Y
+    lens = graph.indptr[xn + 1] - graph.indptr[xn]
+    unit_x = np.repeat(np.arange(len(xn)), lens)
+    pos = np.arange(lens.sum()) - np.repeat(np.cumsum(lens) - lens, lens) + np.repeat(graph.indptr[xn], lens)
+    b = graph.inc_other[pos]
+    jy = np.minimum(np.searchsorted(yn, b), max(len(yn) - 1, 0))
+    ok = (yn[jy] == b) if len(yn) else np.zeros(len(b), bool)
+    ux, uy = unit_x[ok], jy[ok]
+    mid = _signed(graph.inc_edge[pos[ok]], graph.inc_forward[pos[ok]])
+    total, u, p, q = _pick(xc[ux] * yc[uy], yc[uy], room, rng)
+    paths = [(int(xcode[xf[ux[x]] + a]), int(mid[x]), int(-ycode[yf[uy[x]] + c])) for x, a, c in zip(u, p, q)]
+    if flip:                                   # built from t to h: reverse order and direction
+        paths = [tuple(-c for c in reversed(path)) for path in paths]
+    return out + sorted(paths)

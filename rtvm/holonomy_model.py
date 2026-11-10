@@ -97,7 +97,10 @@ def path_transport(table: Tensor, steps: Tensor) -> Tensor:
     Gather the table rows for one step column at a time (table[steps[:, j]]) and
     multiply; never build an (n, MAX_LEN, ...) gather of all steps at once.
     """
-    raise NotImplementedError("path_transport")
+    transport = table[steps[:, 0]]
+    for j in range(1, steps.shape[1]):
+        transport = table[steps[:, j]] @ transport        # later steps act after earlier ones
+    return transport
 
 
 def cycle_defect(table: Tensor, transport: Tensor, closing: Tensor) -> Tensor:
@@ -108,7 +111,9 @@ def cycle_defect(table: Tensor, transport: Tensor, closing: Tensor) -> Tensor:
     num_relations = (table.shape[0] - 1) // 2
     H = table[closing + num_relations] @ transport
     eye = torch.eye(H.shape[-1], dtype=H.dtype, device=H.device)
-    return (H - eye).pow(2).sum(dim=(-3, -2, -1)).clamp_min(0).sqrt()
+    # clamp at 1e-12, not 0: sqrt has an infinite slope at 0, and a clamped value has zero
+    # gradient, so an exactly closed cycle gives a zero gradient instead of NaN (value change <= 1e-6)
+    return (H - eye).pow(2).sum(dim=(-3, -2, -1)).clamp_min(1e-12).sqrt()
 
 
 @torch.no_grad()
@@ -151,7 +156,10 @@ def cycle_loss(defect_true: Tensor, defect_corrupt: Tensor, *, alpha1: float, al
     Means keep the weights comparable across batch sizes. An empty input contributes 0
     (a batch can have no covered triple), never NaN.
     """
-    raise NotImplementedError("cycle_loss")
+    def mean(x: Tensor) -> Tensor:
+        return x.mean() if x.numel() else x.new_zeros(())
+
+    return alpha1 * mean(defect_true.pow(2)) + alpha2 * mean(torch.relu(margin - defect_corrupt).pow(2))
 
 
 def nssa_loss(pos_dist: Tensor, neg_dist: Tensor, *, gamma: float, temperature: float) -> Tensor:

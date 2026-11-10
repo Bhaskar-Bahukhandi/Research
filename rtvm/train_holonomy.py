@@ -153,7 +153,9 @@ def train(config: HolonomyConfig, data: HolonomyData, device: str = "cpu",
     return dict(config=asdict(config), best_v1_auc=state.best_auc, best_epoch=state.best_epoch,
                 epochs_run=state.epoch, history=state.history, train_seconds=time.time() - start,
                 device=torch.cuda.get_device_name(device) if device.type == "cuda" else str(device),
-                tf32_training=config.tf32, evaluation="strict FP32", model=model)
+                tf32_training=config.tf32, evaluation="strict FP32",
+                versions=dict(torch=torch.__version__, cuda=torch.version.cuda, numpy=np.__version__),
+                model=model)
 
 
 def _batch_loss(model, data, idx, n_paths, train_keys, config, rng, device):
@@ -184,6 +186,42 @@ def _batch_loss(model, data, idx, n_paths, train_keys, config, rng, device):
         loss = loss + cycle_loss(cycle_defect(table, U_p, as_t(r)), cycle_defect(table, U_p, as_t(r_bad)),
                                  alpha1=config.alpha1, alpha2=config.alpha2, margin=config.margin)
     return loss
+
+
+def load_data(dataset: str, saved: str | Path = "saved/g2", data: str | Path = "data/g2") -> HolonomyData:
+    """HolonomyData from the files written by experiments/g2_build_data.py (V1 part only).
+
+    Never loads test files: the training loop sees training triples and V1 only.
+    """
+    from pykeen.datasets import get_dataset
+
+    from .holonomy_model import steps_from_codes
+
+    ds = get_dataset(dataset=dataset)
+    train = ds.training.mapped_triples.numpy().astype(np.int64)
+    valid = ds.validation.mapped_triples.numpy().astype(np.int64)
+    small, large = Path(saved) / dataset, Path(data) / dataset
+    # Path codes are row indices into PyKEEN's arrays: refuse if the id mapping or row order changed.
+    import hashlib
+    import json
+    inputs = json.loads((small / "manifest.json").read_text())["inputs"]
+    for name, arr in (("train", train), ("valid", valid)):
+        digest = hashlib.sha256(np.ascontiguousarray(arr, dtype=np.int64).tobytes()).hexdigest()
+        if digest != inputs[f"{name}_sha256"]:
+            raise ValueError(f"{dataset} {name} triples differ from the manifest: rebuild or fix the PyKEEN version")
+    v1 = np.load(small / "valid_v1_index.npy")
+    neg = np.load(small / "valid_negatives.npy").astype(np.int64)
+    m, k = neg.shape[:2]
+    def to_steps(codes):
+        return steps_from_codes(codes, train[:, 1], ds.num_relations)
+
+    pos_paths = np.load(large / "valid_pos_paths.npy")[v1]
+    neg_paths = np.load(large / "valid_neg_paths.npy").reshape(m, k, *pos_paths.shape[1:])[v1]
+    return HolonomyData(
+        num_entities=ds.num_entities, num_relations=ds.num_relations, train=train,
+        train_steps=to_steps(np.load(large / "train_paths.npy")),
+        v1_pos=valid[v1], v1_pos_steps=to_steps(pos_paths),
+        v1_neg=neg[v1], v1_neg_steps=to_steps(neg_paths))
 
 
 def load_config(path: str | Path, **overrides) -> HolonomyConfig:

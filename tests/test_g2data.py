@@ -118,6 +118,15 @@ def test_check_no_leakage_catches_eval_fact(kg):
         check_no_leakage(paths, train, train[[10]])       # out of range
 
 
+def test_check_no_leakage_catches_own_edge(kg):
+    train, _ = kg
+    paths = np.zeros((2, 2, MAX_LEN), dtype=np.int32)
+    paths[1, 0, 1] = encode(5, False)
+    check_no_leakage(paths, train, train[[10]], own_edges=np.array([5, 4]))   # edge 5 is triple 0's, used by 1
+    with pytest.raises(AssertionError):
+        check_no_leakage(paths, train, train[[10]], own_edges=np.array([4, 5]))
+
+
 # ---------------------------------------------------------------- negatives (exercise)
 
 @pytest.fixture

@@ -31,6 +31,13 @@ def test_matches_per_group_sklearn_with_ties():
     assert grouped_auc(pos, neg) == pytest.approx(expected)
 
 
+def test_nan_scores_give_nan_not_zero():
+    assert np.isnan(grouped_auc(np.array([np.nan, 1.0]), np.zeros((2, 3))))
+    neg = np.zeros((2, 3))
+    neg[1, 2] = np.nan
+    assert np.isnan(grouped_auc(np.ones(2), neg))
+
+
 def test_masks():
     pos = np.array([1.0, 1.0, 1.0])
     neg = np.array([[0.0, 2.0], [2.0, 2.0], [0.0, 0.0]])

@@ -21,4 +21,15 @@ def grouped_auc(pos: np.ndarray, neg: np.ndarray, pos_valid: np.ndarray | None =
 
     Vectorise it: no Python loop over positives.
     """
-    raise NotImplementedError("grouped_auc")
+    pos = np.asarray(pos, dtype=float)
+    neg = np.asarray(neg, dtype=float)
+    pv = np.ones(pos.shape, bool) if pos_valid is None else np.asarray(pos_valid, bool)
+    nv = np.ones(neg.shape, bool) if neg_valid is None else np.asarray(neg_valid, bool)
+    wins = ((neg < pos[:, None]) + 0.5 * (neg == pos[:, None])) * nv
+    n_neg = nv.sum(axis=1)
+    keep = pv & (n_neg > 0)
+    if not keep.any():
+        return float("nan")
+    if np.isnan(pos[keep]).any() or np.isnan(neg[keep][nv[keep]]).any():
+        return float("nan")                                  # a diverged model must not score 0 silently
+    return float(np.mean(wins.sum(axis=1)[keep] / n_neg[keep]))

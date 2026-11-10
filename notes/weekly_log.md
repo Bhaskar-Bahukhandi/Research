@@ -47,7 +47,8 @@ Copy the template each Saturday. Newest week at the top.
   - largest clean defect 5.0e-6 (threshold < 1e-4);
   - smallest corrupted defect 15.8 (threshold > 1e-2), with 0 corrupted cycles missed;
   - log-log time slope 0.95 (threshold < 1.3).
-  - Recorded as a pass. TODO: add the localisation count (≥ 16/20 graphs required), which isn't in that file.
+  - single corruption localised in **20/20** graphs (threshold ≥ 16), from `tests/test_localise.py::test_single_corruption_is_found_most_of_the_time`. Recounted on 10 Nov at commit `06cb177`; the engine files are unchanged since 6 Nov (`bac7635`).
+  - All 80 week 3/4 tests pass. Recorded as a pass.
 - **Parameter budget**, measured with `rtvm.utils.count_parameters` on FB15k-237:
 
   | Model | Parameters |

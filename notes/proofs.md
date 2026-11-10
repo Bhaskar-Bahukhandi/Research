@@ -2,6 +2,11 @@
 
 *Lemmas 1 and 2 are my hand proofs (7–8 Nov 2026), with the gaps found in review closed. Lemma 3 was written by Claude to answer the follow-up question from that review. Check every step yourself before using any of this in the Phase 1 report.*
 
+*Numerical check (10 Nov 2026, `tests/test_proofs.py`):*
+- *Lemmas 2 and 3 hold to 1e-9 on random graphs, checked through the scores of random closed walks.*
+- *When both sides of the cut are inconsistent, the scores differ, as Lemma 3's "when it fails" paragraph says.*
+- *A numerical check is evidence, not a proof.*
+
 ## Setting
 
 **The graph.**
