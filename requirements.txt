@@ -15,6 +15,8 @@ pytest==8.4.2
 # Phase 2 (RotatE baseline, FB15k-237, WN18RR); pulls in optuna, pystow, class-resolver
 pykeen==1.11.1
 scipy==1.18.1
+pyyaml==6.0.3          # configs/*.yaml
+scikit-learn==1.9.1    # G2 combiners (logistic regression); grouped-AUC test reference
 
 # Added in later phases:
 # faiss-cpu     # Phase 3: retrieval baseline

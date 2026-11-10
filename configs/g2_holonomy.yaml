@@ -1,0 +1,28 @@
+# G2 holonomy model: fixed values and tuning ranges.
+#
+# STATUS: DRAFT, NOT FROZEN. Every range below is a proposal written 2026-11-10 by
+# Claude for you to decide. The protocol requires this file to be committed BEFORE the
+# first tuning trial; after that, changes need a dated note in notes/protocol.md.
+#
+# Read by rtvm/train_holonomy.py (load_config): `fixed` sets HolonomyConfig directly;
+# each of the 20 random-search trials draws one value per `search` entry (seed 0).
+
+fixed:
+  num_negatives: 256        # single-triple term, uniform head/tail corruption (RotatE paper: 256 on FB15k-237)
+  batch_size: 1024
+  cycles_per_triple: 8      # protocol note 2026-11-07
+  eval_every: 10            # protocol: evaluate on V1 every 10 epochs
+  patience: 5               # protocol: stop after 5 evaluations without improvement
+  max_epochs: 1000          # protocol cap
+  tf32: true                # training only; evaluation is strict FP32 (protocol note 2026-11-07)
+
+search:                     # 20 trials, random search, trial seed 0
+  rank: {choice: [1, 2, 4]}                       # protocol note 2026-11-06
+  lr: {log_uniform: [1.0e-4, 3.0e-3]}
+  rotation_init: {log_uniform: [0.01, 0.3]}       # std of U, V entries; small = near-identity rotations
+  entity_init: {choice: [1.0]}                    # fixed in effect; listed so the trial log shows it
+  gamma: {choice: [6.0, 9.0, 12.0]}               # single-triple margin, as RotatE's gamma
+  temperature: {choice: [0.5, 1.0]}               # self-adversarial temperature
+  alpha1: {log_uniform: [0.01, 1.0]}              # weight of true-cycle term
+  alpha2: {log_uniform: [0.01, 1.0]}              # weight of corrupted-cycle hinge
+  margin: {uniform: [1.0, 8.0]}                   # hinge margin m on ||H - I||_F; Haar-random SO(64)^2 gives about 16
