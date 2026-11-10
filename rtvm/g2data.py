@@ -181,7 +181,68 @@ def sample_negatives(positives: np.ndarray, train: np.ndarray, known: set[tuple[
     Hint: shuffling the pool once (rng.permutation) and walking through it is "uniform
     without replacement". structure_check.py does this without the fallback.
     """
-    raise NotImplementedError("sample_negatives")
+    positives = np.asarray(positives, dtype=np.int64)
+    head_pools, tail_pools = role_pools(train)
+    negatives = np.empty((len(positives), 2 * NEG_PER_SIDE, 3), dtype=np.int64)
+    fallback = np.zeros((len(positives), 2 * NEG_PER_SIDE), dtype=bool)
+    all_entities = np.arange(num_entities, dtype=np.int64)
+
+    for i, (h, r, t) in enumerate(positives.tolist()):
+        rng = np.random.default_rng([seed, i])
+
+        # Keep the head side first so each positive always consumes random numbers
+        # in the same order, even if the positives are processed in batches.
+        for side, pool, start in (
+            ("head", head_pools.get(r, np.empty(0, dtype=np.int64)), 0),
+            ("tail", tail_pools.get(r, np.empty(0, dtype=np.int64)), NEG_PER_SIDE),
+        ):
+            replacements = []
+            used = set()
+
+            def candidate_triple(entity: int) -> tuple[int, int, int]:
+                if side == "head":
+                    return entity, r, t
+                return h, r, entity
+
+            for entity in rng.permutation(pool):
+                entity = int(entity)
+                triple = candidate_triple(entity)
+                if triple in known:
+                    continue
+                replacements.append(entity)
+                used.add(entity)
+                if len(replacements) == NEG_PER_SIDE:
+                    break
+
+            role_pool_count = len(replacements)
+            if role_pool_count < NEG_PER_SIDE:
+                # Pool candidates have all been checked, so these draws fill only
+                # the shortfall. This shuffle uses the same per-positive generator, so a
+                # head-side fallback changes the tail side's draws; that is still
+                # deterministic, because the order (head first) is fixed.
+                for entity in rng.permutation(all_entities):
+                    entity = int(entity)
+                    if entity in used or candidate_triple(entity) in known:
+                        continue
+                    replacements.append(entity)
+                    used.add(entity)
+                    if len(replacements) == NEG_PER_SIDE:
+                        break
+
+            if len(replacements) < NEG_PER_SIDE:
+                raise ValueError(
+                    f"could not find {NEG_PER_SIDE} valid {side} replacements "
+                    f"for positive {i}"
+                )
+
+            for offset, entity in enumerate(replacements):
+                if side == "head":
+                    negatives[i, start + offset] = (entity, r, t)
+                else:
+                    negatives[i, start + offset] = (h, r, entity)
+                fallback[i, start + offset] = offset >= role_pool_count
+
+    return negatives, fallback
 
 
 # ---------------------------------------------------------------- paths
