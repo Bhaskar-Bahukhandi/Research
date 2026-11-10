@@ -92,17 +92,21 @@ def main() -> None:
     untrained = HolonomyModel(data.num_entities, data.num_relations, rank=2, rotation_init=0.1,
                               generator=torch.Generator().manual_seed(0))
     fmt = lambda d: ", ".join(f"length {L}: {a:.3f}" for L, a in d.items())     # noqa: E731
-    print(f"{'untrained':24s}: V1 grouped AUC {evaluate_v1(untrained, data, 'cpu'):.3f} | "
-          f"length-matched cycle AUC {fmt(length_matched_auc(untrained, data))}")
-    runs = (("cycle term, protocol stop", dict(alpha1=1.0, alpha2=1.0)),
+    m0 = evaluate_v1(untrained, data, "cpu")
+    print(f"{'untrained':26s}: triple grouped AUC {m0['triple_grouped_auc']:.3f} | stratified cycle AUC "
+          f"{m0['stratified']:.3f} | length-matched {fmt(length_matched_auc(untrained, data))}")
+    runs = (("cycle term, early stopping", dict(alpha1=1.0, alpha2=1.0)),
             ("cycle term, 200 epochs", dict(alpha1=1.0, alpha2=1.0, eval_every=200, patience=10 ** 6)),
             ("single term, 200 epochs", dict(alpha1=0.0, alpha2=0.0, eval_every=200, patience=10 ** 6)))
     for name, changes in runs:
         out = train(HolonomyConfig(**{**base, **changes}), data, log=lambda *_: None)
-        print(f"{name:24s}: V1 grouped AUC {out['best_v1_auc']:.3f} | length-matched cycle AUC "
-              f"{fmt(length_matched_auc(out['model'], data))} (weights from epoch {out['best_epoch']})")
-    print("Reading: the triple-level V1 metric saturates from path-length mix alone, so early stopping on it\n"
-          "keeps weights from before the model has learned composition (see the length-matched column).")
+        best = next(h for h in out["history"] if h["epoch"] == out["best_epoch"])
+        print(f"{name:26s}: triple grouped AUC {best['v1_triple_grouped_auc']:.3f} | stratified cycle AUC "
+              f"{out['best_v1_auc']:.3f} | length-matched {fmt(length_matched_auc(out['model'], data))} "
+              f"(weights from epoch {out['best_epoch']} of {out['epochs_run']})")
+    print("Before the 2026-11-10 note, early stopping used the triple grouped AUC, which is 0.98 untrained and\n"
+          "saturated at epoch 10, so it kept weights with length-matched AUC 0.81. Early stopping now uses the\n"
+          "stratified cycle AUC (protocol note of 2026-11-10).")
 
 
 if __name__ == "__main__":

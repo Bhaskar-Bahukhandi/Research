@@ -5,9 +5,11 @@ Rules implemented (notes/protocol.md):
     epoch, drawn from its saved paths (own edge already excluded), each paired with one
     corrupted cycle (the same path closed with another relation, see corrupt_closing);
   * TF32 allowed in training if config.tf32; every evaluation in strict FP32;
-  * evaluate grouped AUC of the triple holonomy score on V1 every `eval_every` epochs,
-    counting only covered positives against their covered negatives; stop after
-    `patience` evaluations without improvement; at most `max_epochs` epochs;
+  * every `eval_every` epochs, evaluate on V1 the length-and-relation-stratified cycle AUC
+    (protocol note of 2026-11-10; it selects weights and drives early stopping) and, for
+    transparency, the original metric: grouped AUC of the triple holonomy score, covered
+    positives against their covered negatives; stop after `patience` evaluations without
+    improvement; at most `max_epochs` epochs;
   * every run records its GPU and precision.
 
 The data arrays come from the G2 data build (negatives, paths). Use `train(...)`
@@ -23,9 +25,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .g2eval import grouped_auc
-from .holonomy_model import (HolonomyModel, corrupt_closing, cycle_defect, cycle_loss, fact_key,
-                             nssa_loss, path_transport, triple_holonomy_scores)
+from .g2eval import grouped_auc, stratified_cycle_auc
+from .holonomy_model import (HolonomyModel, corrupt_closing, cycle_defect, cycle_defects, cycle_loss, fact_key,
+                             nssa_loss, path_transport, triple_scores_from_cycles)
 
 
 @dataclass
@@ -78,15 +80,25 @@ def _set_tf32(on: bool) -> None:
     torch.backends.cudnn.allow_tf32 = on
 
 
-def evaluate_v1(model: HolonomyModel, data: HolonomyData, device) -> float:
-    """Grouped AUC of -holonomy on V1, covered positives vs covered negatives, strict FP32."""
+def evaluate_v1(model: HolonomyModel, data: HolonomyData, device) -> dict[str, float]:
+    """V1 metrics in strict FP32, from one pass over every saved cycle.
+
+    stratified: the selection metric (protocol note of 2026-11-10).
+    triple_grouped_auc: the original metric, grouped AUC of -triple holonomy score with
+    covered positives against their covered negatives; logged, not used for selection.
+    """
     _set_tf32(False)
     model.eval()
-    pos, pos_cov = triple_holonomy_scores(model, data.v1_pos[:, 1], data.v1_pos_steps, device)
     m, k = data.v1_neg.shape[:2]
-    neg, neg_cov = triple_holonomy_scores(model, data.v1_neg[..., 1].reshape(-1),
-                                          data.v1_neg_steps.reshape(m * k, *data.v1_neg_steps.shape[2:]), device)
-    return grouped_auc(-pos, -neg.reshape(m, k), pos_cov, neg_cov.reshape(m, k))
+    pos_rel, neg_rel = data.v1_pos[:, 1], data.v1_neg[..., 1].reshape(-1)
+    p_tri, p_def, p_len = cycle_defects(model, pos_rel, data.v1_pos_steps, device)
+    n_tri, n_def, n_len = cycle_defects(model, neg_rel, data.v1_neg_steps.reshape(m * k, *data.v1_neg_steps.shape[2:]),
+                                        device)
+    pos, pos_cov = triple_scores_from_cycles(m, p_tri, p_def)
+    neg, neg_cov = triple_scores_from_cycles(m * k, n_tri, n_def)
+    return dict(
+        stratified=stratified_cycle_auc(p_def, p_len, pos_rel[p_tri], n_def, n_len, neg_rel[n_tri]),
+        triple_grouped_auc=grouped_auc(-pos, -neg.reshape(m, k), pos_cov, neg_cov.reshape(m, k)))
 
 
 def train(config: HolonomyConfig, data: HolonomyData, device: str = "cpu",
@@ -131,16 +143,18 @@ def train(config: HolonomyConfig, data: HolonomyData, device: str = "cpu",
         state.epoch = epoch
 
         if epoch % config.eval_every == 0 or epoch == config.max_epochs:
-            auc = evaluate_v1(model, data, device)
+            metrics = evaluate_v1(model, data, device)
+            auc = metrics["stratified"]                          # selection metric (note 2026-11-10)
             improved = auc > state.best_auc
             if improved:
                 state.best_auc, state.best_epoch, state.bad_evals = auc, epoch, 0
                 best_weights = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             else:
                 state.bad_evals += 1
-            state.history.append(dict(epoch=epoch, loss=total / batches, v1_auc=auc))
-            log(f"epoch {epoch}: loss {total / batches:.4f}  V1 grouped AUC {auc:.4f}"
-                f"{'  (best)' if improved else ''}")
+            state.history.append(dict(epoch=epoch, loss=total / batches, v1_auc=auc,
+                                      v1_triple_grouped_auc=metrics["triple_grouped_auc"]))
+            log(f"epoch {epoch}: loss {total / batches:.4f}  V1 stratified cycle AUC {auc:.4f}"
+                f"  (triple grouped AUC {metrics['triple_grouped_auc']:.4f}){'  best' if improved else ''}")
             if ckpt:
                 ckpt.parent.mkdir(parents=True, exist_ok=True)
                 tmp = ckpt.with_suffix(".tmp")

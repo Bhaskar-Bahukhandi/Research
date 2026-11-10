@@ -117,32 +117,41 @@ def cycle_defect(table: Tensor, transport: Tensor, closing: Tensor) -> Tensor:
 
 
 @torch.no_grad()
-def triple_holonomy_scores(model: HolonomyModel, relations: np.ndarray, steps: np.ndarray,
-                           device: str | torch.device = "cpu", chunk: int = 16384) -> tuple[np.ndarray, np.ndarray]:
-    """Protocol "triple holonomy score": mean defect over the triple's saved cycles.
+def cycle_defects(model: HolonomyModel, relations: np.ndarray, steps: np.ndarray,
+                  device: str | torch.device = "cpu", chunk: int = 16384):
+    """Defect of every saved cycle. Returns (triple index, defect, path length), one entry per cycle.
 
     relations: (n,) the evaluated triples' relations. steps: (n, K, MAX_LEN) table
     indices from steps_from_codes (a path slot is empty when all its steps are padding).
-    Returns (scores, covered): scores is 0 where the triple has no path.
     Evaluation precision is strict FP32: the caller turns TF32 off.
     """
     steps = np.asarray(steps)
-    n, k, _ = steps.shape
     pad = 2 * model.num_relations
-    valid = (steps != pad).any(axis=-1)                       # (n, K)
-    tri, slot = np.nonzero(valid)
-    sums = np.zeros(n)
+    lengths = (steps != pad).sum(axis=-1)                     # (n, K)
+    tri, slot = np.nonzero(lengths > 0)
+    defects = np.empty(len(tri))
     table = model.table().to(device)
     for s in range(0, len(tri), chunk):
         i, j = tri[s:s + chunk], slot[s:s + chunk]
         st = torch.as_tensor(steps[i, j], device=device)
         rel = torch.as_tensor(np.asarray(relations)[i], device=device)
-        d = cycle_defect(table, path_transport(table, st), rel).double().cpu().numpy()
-        np.add.at(sums, i, d)
-    count = valid.sum(axis=1)
+        defects[s:s + chunk] = cycle_defect(table, path_transport(table, st), rel).double().cpu().numpy()
+    return tri, defects, lengths[tri, slot]
+
+
+def triple_scores_from_cycles(n: int, tri: np.ndarray, defects: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Protocol "triple holonomy score": mean defect over each triple's cycles; 0 if uncovered."""
+    sums, count = np.zeros(n), np.bincount(tri, minlength=n)
+    np.add.at(sums, tri, defects)
     covered = count > 0
-    scores = np.where(covered, sums / np.maximum(count, 1), 0.0)
-    return scores, covered
+    return np.where(covered, sums / np.maximum(count, 1), 0.0), covered
+
+
+def triple_holonomy_scores(model: HolonomyModel, relations: np.ndarray, steps: np.ndarray,
+                           device: str | torch.device = "cpu", chunk: int = 16384) -> tuple[np.ndarray, np.ndarray]:
+    """Protocol "triple holonomy score" and covered flag for each triple (see cycle_defects)."""
+    tri, defects, _ = cycle_defects(model, relations, steps, device, chunk)
+    return triple_scores_from_cycles(len(np.asarray(steps)), tri, defects)
 
 
 # ---------------------------------------------------------------- losses

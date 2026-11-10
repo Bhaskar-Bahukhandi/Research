@@ -71,6 +71,28 @@ Each change keeps the original value visible.
     - **Before the first test evaluation:** the files are regenerated from the committed script and must reproduce the committed hashes. `rtvm.g2data.check_no_leakage` must pass on every path file.
     - The Timing rule's "committed" means this manifest for paths.
   - **Random streams (clarifying "seed 0"):** negatives for positive i, and paths for triple i, each use their own generator, `numpy.random.default_rng([0, i])`, with i the triple's position in its split's array. Results are then reproducible and independent of batching.
+- **2026-11-10 (before any G2 tuning, config freeze or data build), the holonomy model's tuning and early-stopping metric; random streams for negatives' paths.** Approved by me on 10 Nov 2026; implemented as `rtvm.g2eval.stratified_cycle_auc`.
+  - **Evidence.** It comes from a synthetic graph only (`experiments/g2_synthetic_check.py`, a 10 × 10 torus with planted relation compositions); no real dataset was used.
+    - The protocol's V₁ metric for the holonomy model is grouped AUC of the triple holonomy score. An **untrained** model scores 0.980 on it.
+    - Comparing only cycles of the same length, the untrained model scores 0.67.
+    - With the protocol's early stopping, the kept weights came from epoch 10 and scored 0.81 on same-length cycles. Training for 200 epochs reached 1.00.
+    - **Why:** with near-identity rotations, a cycle's defect grows with its length, and true triples have more short paths. The triple score averages cycles of mixed lengths, so the metric mostly rewards the path-length mix, which B₀'s length-share features already capture.
+    - **Consequence:** this cannot produce a false pass, but it can fail G2 through an early-stopped model, and tuning would select hyperparameters on the shortcut.
+  - **Change: a new metric for the holonomy model only.** It replaces "the grouped AUC of its own triple score on V₁" (Models, Tuning budget) for the holonomy model. The new metric is the **length-and-relation-stratified cycle AUC on V₁**:
+    - Take the saved cycles of covered V₁ positives and of their covered negatives.
+    - Within each stratum (path length L ∈ {1, 2, 3}, relation r), compute the AUC of positive-cycle defects against negative-cycle defects. A lower defect counts as more plausible, and ties count ½.
+    - Average the strata, weighted by each stratum's number of positive cycles. Strata with no negative cycle are skipped.
+    - Stratifying by relation keeps relation-specific defect levels from counting as information.
+  - **Unchanged:**
+    - the evaluation schedule (every 10 epochs, stop after 5 evaluations without improvement, at most 1,000 epochs), strict FP32 evaluation, V₁ only, and 20 trials;
+    - RotatE's and QuatE's metric (grouped AUC of `score_hrt`);
+    - the gate: features, combiners, the holonomy feature (still the triple holonomy score) and the decision rule.
+
+    Every run also logs the old triple-level grouped AUC, for transparency.
+  - **What the new metric still contains:** cancelling relation words (for example a path containing r followed by r reversed, or reversed then forward) give small defects even before training. That is part of why the untrained model scores 0.67 rather than 0.5 on same-length cycles. This structural signal is the same for every configuration, so it does not bias the choice between configurations.
+  - **Random streams, clarified:** "i the triple's position in its split's array" means the following.
+    - For training triples and for positives, i is the row of the training, validation or test array.
+    - For negatives, the (m, 10, 3) array is flattened row-major, so negative j of positive i uses stream i · 10 + j. This is what `experiments/g2_build_data.py` does.
 
 ## G2 (H2) in full
 
