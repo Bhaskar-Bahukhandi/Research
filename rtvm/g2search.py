@@ -30,7 +30,9 @@ def load_spec(path: str | Path) -> dict:
 
 
 def file_sha256(path: str | Path) -> str:
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    """SHA-256 of a text file with CRLF read as LF, so a Windows checkout (git autocrlf)
+    and a Linux checkout (Kaggle, Colab) of the same commit give the same hash."""
+    return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def sample_trials(search: dict, n: int = N_TRIALS, seed: int = TRIAL_SEED) -> list[dict]:

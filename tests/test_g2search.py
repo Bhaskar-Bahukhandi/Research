@@ -163,3 +163,10 @@ def test_holonomy_deadline_stops_after_a_checkpoint(tmp_path):
     assert not part["complete"] and part["epochs_run"] == 2
     rest = train(cfg, d, checkpoint=ckpt, log=lambda *_: None)
     assert rest["complete"] and rest["history"] == full["history"]
+
+
+def test_config_hash_ignores_line_endings(tmp_path):
+    from rtvm.g2search import file_sha256
+    (tmp_path / "lf.yaml").write_bytes(b"a: 1\nb: 2\n")
+    (tmp_path / "crlf.yaml").write_bytes(b"a: 1\r\nb: 2\r\n")
+    assert file_sha256(tmp_path / "lf.yaml") == file_sha256(tmp_path / "crlf.yaml")
