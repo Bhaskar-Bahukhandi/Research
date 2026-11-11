@@ -5,7 +5,8 @@
 
 Session N attaches session N-1's output (PREVIOUS_SLUG, e.g. rtvm-g2-rotate-s1) and continues every
 run from its checkpoint. Used 2026-11-10: s1 = 0.25 h shakedown, s2 = 11 h (code c5c44e2; every resume
-crashed on cuda, see the preflight below).
+crashed on cuda, see the preflight below); 2026-11-11: s3 = 11 h (71bf0a7, fixed per-GPU queues, which
+would have left GPU 0 idle in s4, hence the shared job list).
 
 The notebook runs the commit checked out here, which must be clean and pushed. Before the search it runs
 the cuda resume test and stops the session if that fails, so a resume bug costs minutes, not a session.
@@ -22,9 +23,7 @@ if not git("branch", "-r", "--contains", COMMIT):
     sys.exit(f"{COMMIT} is not on any remote branch: push first")
 cell = r'''# RTVM-100M G2: RotatE random search on 2x T4, session SESSION (code at commit COMMIT).
 # Resumable: finished runs are skipped, unfinished runs continue from their checkpoints.
-# GPU 0: FB15k-237 trials 0-9, then FB seed 1.
-# GPU 1: WN18RR trials 0-19, WN seeds 1 and 2, then FB15k-237 trials 10-19, then FB seed 2.
-# A seed command fails harmlessly until all 20 trials of its dataset are complete.
+# Both GPUs pull from one job list (FB15k-237 and WN18RR trials, then seeds 1 and 2 of each).
 import glob, os, shutil, subprocess, sys, time
 T0 = time.time()
 BUDGET_H = BUDGETH                                     # hours; Kaggle GPU sessions end at 12 h
@@ -45,31 +44,61 @@ if prev:                                               # continue the previous s
     shutil.copytree(prev[0], RUNS, dirs_exist_ok=True)
     print("continued from", prev[0], flush=True)
 os.makedirs(RUNS, exist_ok=True)
-def cmd(model, ds, *job):
-    return ["experiments/g2_search.py", "--model", model, "--dataset", ds, *job, "--device", "cuda", "--out", RUNS]
-QUEUES = {
-    "0": [cmd("rotate", "fb15k237", "--trials", "0-9"), cmd("rotate", "fb15k237", "--seeds", "1")],
-    "1": [cmd("rotate", "wn18rr", "--trials", "0-19"), cmd("rotate", "wn18rr", "--seeds", "1", "2"),
-          cmd("rotate", "fb15k237", "--trials", "10-19"), cmd("rotate", "fb15k237", "--seeds", "2")],
-}
+# One shared job list; each GPU worker claims the next job (an O_EXCL file in /tmp/claims) and runs it alone.
+# Unfinished runs (a checkpoint, no complete json) go first. A seed job waits until all 20 trials of its
+# dataset are complete; a worker with nothing claimable waits while the other one still runs a job.
+DS = ("fb15k237", "wn18rr")
+JOBS = [[ds, "trial", i] for i in range(20) for ds in DS] + [[ds, "seed", s] for s in (1, 2) for ds in DS]
+def stem(j):
+    return f"trial_{j[2]:02d}" if j[1] == "trial" else f"seed_{j[2]}"
+JOBS.sort(key=lambda j: not os.path.exists(f"{RUNS}/{j[0]}/rotate/{stem(j)}.ckpt"))    # stable: partial first
 WORKER = r"""
-import os, subprocess, sys, time, json
-gpu, t_end, queue = sys.argv[1], float(sys.argv[2]), json.loads(sys.argv[3])
+import json, os, subprocess, sys, time
+gpu, t_end, jobs = sys.argv[1], float(sys.argv[2]), json.loads(sys.argv[3])
+RUNS, CLAIMS = sys.argv[4], "/tmp/claims"
 env = {**os.environ, "CUDA_VISIBLE_DEVICES": gpu, "PYTHONWARNINGS": "ignore"}
 log = open(f"/kaggle/working/gpu{gpu}.log", "a")
-for c in queue:
+stem = lambda j: f"trial_{j[2]:02d}" if j[1] == "trial" else f"seed_{j[2]}"
+tag = lambda j: f"{j[0]}-{stem(j)}"
+def complete(ds, name):
+    try:
+        return json.load(open(f"{RUNS}/{ds}/rotate/{name}.json")).get("complete", False)
+    except (OSError, ValueError):
+        return False
+def ready(j):
+    return j[1] == "trial" or all(complete(j[0], f"trial_{i:02d}") for i in range(20))
+def claim(j):
+    try:
+        os.close(os.open(f"{CLAIMS}/{tag(j)}", os.O_CREAT | os.O_EXCL)); return True
+    except FileExistsError:
+        return False
+while True:
     left = (t_end - time.time()) / 3600
     if left < 0.1:
         break
-    log.write(f"=== {time.strftime('%H:%M:%S')} {' '.join(c)} (--max-hours {left:.2f})\n"); log.flush()
-    r = subprocess.run([sys.executable, *c, "--max-hours", f"{left:.3f}"], cwd="/tmp/repo", env=env,
-                       stdout=log, stderr=subprocess.STDOUT)
+    todo = [j for j in jobs if not complete(j[0], stem(j)) and not os.path.exists(f"{CLAIMS}/{tag(j)}")]
+    if not todo:
+        break
+    job = next((j for j in todo if ready(j) and claim(j)), None)
+    if job is None:                       # only blocked seed jobs left: wait while another job is running
+        if not any(f.endswith(".running") for f in os.listdir(CLAIMS)):
+            break
+        time.sleep(60); continue
+    run = ["--trials", f"{job[2]}-{job[2]}"] if job[1] == "trial" else ["--seeds", str(job[2])]
+    c = ["experiments/g2_search.py", "--model", "rotate", "--dataset", job[0], *run, "--device", "cuda",
+         "--out", RUNS, "--max-hours", f"{left:.3f}"]
+    marker = f"{CLAIMS}/{tag(job)}.running"
+    open(marker, "w").close()
+    log.write(f"=== {time.strftime('%H:%M:%S')} {' '.join(c)}\n"); log.flush()
+    r = subprocess.run([sys.executable, *c], cwd="/tmp/repo", env=env, stdout=log, stderr=subprocess.STDOUT)
+    os.remove(marker)
     log.write(f"=== exit {r.returncode}\n"); log.flush()
 """
 open("/tmp/worker.py", "w").write(WORKER)
+os.makedirs("/tmp/claims", exist_ok=True)
 import json
 t_end = T0 + BUDGET_H * 3600
-procs = [subprocess.Popen([sys.executable, "/tmp/worker.py", g, str(t_end), json.dumps(q)]) for g, q in QUEUES.items()]
+procs = [subprocess.Popen([sys.executable, "/tmp/worker.py", g, str(t_end), json.dumps(JOBS), RUNS]) for g in ("0", "1")]
 for p in procs:
     p.wait()
 for ds in ("fb15k237", "wn18rr"):
