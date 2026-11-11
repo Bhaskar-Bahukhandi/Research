@@ -176,11 +176,12 @@ def _rng_state(device) -> dict:
 
 
 def _set_rng_state(saved: dict, device) -> None:
-    torch.set_rng_state(saved["torch"])
+    # torch.load(map_location=cuda) moves these ByteTensors to the GPU; set_rng_state needs CPU ones
+    torch.set_rng_state(saved["torch"].cpu())
     np.random.set_state(saved["numpy"])
     random.setstate(saved["python"])
     if saved["cuda"] is not None and device.type == "cuda":
-        torch.cuda.set_rng_state(saved["cuda"], device)
+        torch.cuda.set_rng_state(saved["cuda"].cpu(), device)
 
 
 def train(config: BaselineConfig, data: BaselineData, device: str = "cpu",

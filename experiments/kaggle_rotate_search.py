@@ -4,13 +4,22 @@
     kaggle kernels push -p OUT_DIR -t 43200 --accelerator NvidiaTeslaT4
 
 Session N attaches session N-1's output (PREVIOUS_SLUG, e.g. rtvm-g2-rotate-s1) and continues every
-run from its checkpoint. Used 2026-11-10: s1 = 0.25 h shakedown, s2 = 11 h.
+run from its checkpoint. Used 2026-11-10: s1 = 0.25 h shakedown, s2 = 11 h (code c5c44e2; every resume
+crashed on cuda, see the preflight below).
+
+The notebook runs the commit checked out here, which must be clean and pushed. Before the search it runs
+the cuda resume test and stops the session if that fails, so a resume bug costs minutes, not a session.
 """
-import json, os, sys
+import json, os, subprocess, sys
 out, session = sys.argv[1], int(sys.argv[2])
 budget = float(sys.argv[3])
 prev = sys.argv[4] if len(sys.argv) > 4 else None
-COMMIT = "c5c44e2"
+git = lambda *a: subprocess.run(["git", *a], capture_output=True, text=True, check=True).stdout.strip()
+if git("status", "--porcelain"):
+    sys.exit("working tree is dirty: commit first")
+COMMIT = git("rev-parse", "--short", "HEAD")
+if not git("branch", "-r", "--contains", COMMIT):
+    sys.exit(f"{COMMIT} is not on any remote branch: push first")
 cell = r'''# RTVM-100M G2: RotatE random search on 2x T4, session SESSION (code at commit COMMIT).
 # Resumable: finished runs are skipped, unfinished runs continue from their checkpoints.
 # GPU 0: FB15k-237 trials 0-9, then FB seed 1.
@@ -22,8 +31,14 @@ BUDGET_H = BUDGETH                                     # hours; Kaggle GPU sessi
 def sh(c):
     r = subprocess.run(c, shell=True, capture_output=True, text=True)
     print((r.stdout + r.stderr)[-3000:], flush=True)
+    return r.returncode
 sh("git clone -q https://github.com/Bhaskar-Bahukhandi/Research /tmp/repo && git -C /tmp/repo checkout -q COMMIT && git -C /tmp/repo log --oneline -1")
 sh("pip install -q pykeen==1.11.1 2>&1 | tail -2; nvidia-smi -L")
+pf = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_g2search.py",
+                     "-k", "resume and cuda", "-rs"], cwd="/tmp/repo", capture_output=True, text=True)
+print("preflight:", (pf.stdout + pf.stderr)[-1500:], flush=True)
+if pf.returncode != 0 or "1 passed" not in pf.stdout:      # a skip (no GPU visible) also stops the session
+    raise SystemExit("preflight failed: cuda resume test; not starting the search")
 RUNS = "/kaggle/working/runs/g2"
 prev = sorted(glob.glob("/kaggle/input/**/runs/g2", recursive=True))
 if prev:                                               # continue the previous session's search

@@ -132,16 +132,28 @@ def test_baseline_trains_evaluates_and_is_deterministic(data, model):
     assert a["history"] == b["history"]
 
 
-def test_baseline_resume_and_deadline(data, tmp_path):
+def _cuda_available():
+    import torch
+    return torch.cuda.is_available()
+
+
+# The cuda case skips on a CPU machine; the Kaggle notebook runs it as a preflight before the search
+# (2026-11-11: resuming on cuda crashed in session 2 because the RNG state was loaded onto the GPU).
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(
+    not _cuda_available(), reason="needs a GPU"))])
+def test_baseline_resume_and_deadline(data, tmp_path, device):
     from rtvm.baselines import train
-    full = train(small(), data, log=lambda *_: None)
+    full = train(small(), data, device=device, log=lambda *_: None)
     ckpt = tmp_path / "run.ckpt"
-    part = train(small(), data, checkpoint=ckpt, log=lambda *_: None, deadline=time.time() - 1)
+    part = train(small(), data, device=device, checkpoint=ckpt, log=lambda *_: None, deadline=time.time() - 1)
     assert not part["complete"] and part["epochs_run"] == 2   # stops after the first evaluation
     msgs = []
-    rest = train(small(), data, checkpoint=ckpt, log=msgs.append)
+    rest = train(small(), data, device=device, checkpoint=ckpt, log=msgs.append)
     assert msgs[0] == "resumed at epoch 2" and rest["complete"]
-    assert rest["history"] == full["history"]                 # resumed run matches the uninterrupted one
+    if device == "cpu":
+        assert rest["history"] == full["history"]             # resumed run matches the uninterrupted one
+    else:                                                      # CUDA scatter-add backward is not bitwise deterministic
+        assert len(rest["history"]) == len(full["history"])
 
 
 def test_holonomy_deadline_stops_after_a_checkpoint(tmp_path):
