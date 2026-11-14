@@ -32,7 +32,7 @@ from pykeen.sampling.filtering import Filterer
 
 from .g2eval import grouped_auc
 
-MODELS = ("rotate_official", "quate_pykeen")
+MODELS = ("rotate_official", "quate_pykeen", "quate_official")
 
 
 @dataclass
@@ -123,6 +123,95 @@ class ExactFilterer(Filterer):
         return ((self.keys[pos] == key) & inside).to(batch.device)
 
 
+# ---------------------------------------------------------------- QuatE, official-code definition
+# notes/quate_check.md compares PyKEEN 1.11.1's QuatE with github.com/cheungdaven/QuatE (77cdd49f2bc2).
+# The score is the same; these pieces reproduce the official regularisation and relation init:
+#   * relations are stored raw and normalised inside the score (PyKEEN normalises in the
+#     representation, so its relation regulariser only sees unit quaternions and does nothing);
+#   * L = loss + lam * (mean|h|^2 + mean|t|^2) + lam * mean|r|^2, squared quaternion moduli on the raw
+#     parameters, means over every scored row (positives and negatives) and every dimension;
+#   * relations initialised like entities, with the official code's entity-count fan-in.
+
+class NormalizedQuatEInteraction(Interaction):
+    """Official QuatE score: -sum_d <h_d (x) r_d/|r_d|, t_d>, relations stored unnormalised."""
+
+    entity_shape = ("dk",)
+    relation_shape = ("dk",)
+
+    def __init__(self) -> None:
+        super().__init__()
+        from pykeen.nn import quaternion
+        self.register_buffer(name="table", tensor=quaternion.multiplication_table())
+
+    def forward(self, h: torch.Tensor, r: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        r = r / r.norm(p=2, dim=-1, keepdim=True)           # official: divide by sqrt(s^2+x^2+y^2+z^2), no eps
+        return -torch.einsum("...di, ...dj, ...dk, ijk -> ...", h, r, t, self.table)
+
+
+def _pooled_squared_modulus_regularizer():
+    from pykeen.regularizers import Regularizer
+
+    class PooledSquaredModulus(Regularizer):
+        """weight * scale * (sum of |q|^2 over every quaternion looked up) / (number of quaternions).
+
+        PyKEEN looks up heads and tails, positives and negatives in separate calls. Pooling them
+        gives the official mean over all scored rows: for entities, (mean|h|^2 + mean|t|^2) / 2, so
+        the entity regulariser uses scale = 2; for relations, mean|r|^2, scale = 1.
+        """
+
+        def __init__(self, weight: float = 1.0, scale: float = 1.0):
+            self.scale = scale
+            super().__init__(weight=weight)
+
+        def reset(self) -> None:
+            super().reset()
+            self._sum, self._count = 0.0, 0
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:          # one lookup: (..., d, 4)
+            return x.pow(2).sum()
+
+        def update(self, *tensors: torch.Tensor) -> None:
+            if not self.training or not torch.is_grad_enabled():
+                return
+            for x in tensors:
+                self._sum = self._sum + self.forward(x)
+                self._count += x.numel() // 4
+            self.updated = True
+
+        def pop_regularization_term(self) -> torch.Tensor:
+            result = (self.weight * self.scale * self._sum / self._count) if self._count \
+                else torch.zeros((), device=self.weight.device)
+            self.reset()
+            return result
+
+    return PooledSquaredModulus
+
+
+def build_quate_official(triples_factory, dim: int, regularizer_weight: float, seed: int, **kwargs):
+    """Official-code QuatE in PyKEEN (notes/quate_check.md); kwargs go to ERModel (loss, ...)."""
+    from pykeen.models import ERModel
+    from pykeen.nn.init import init_quaternions
+
+    n_ent, n_rel = triples_factory.num_entities, triples_factory.num_relations
+
+    def relation_init(x: torch.Tensor) -> torch.Tensor:
+        # init_quaternions uses s = 1/sqrt(2 * rows); the official code used rows = n_entities for
+        # relations too, so rescale the modulus by sqrt(n_rel / n_ent) (it is uniform in [-s, s])
+        return init_quaternions(x) * math.sqrt(n_rel / n_ent)
+
+    reg = _pooled_squared_modulus_regularizer()
+    return ERModel(
+        triples_factory=triples_factory,
+        interaction=NormalizedQuatEInteraction(),
+        entity_representations_kwargs=dict(
+            shape=(dim, 4), initializer=init_quaternions,
+            regularizer=reg(weight=regularizer_weight, scale=2.0)),
+        relation_representations_kwargs=dict(
+            shape=(dim, 4), initializer=relation_init,
+            regularizer=reg(weight=regularizer_weight, scale=1.0)),
+        random_seed=seed, **kwargs)
+
+
 def build_model(config: BaselineConfig, triples_factory):
     """The G2 baseline named by config.model, sized config.dim, seeded config.seed."""
     from pykeen.models import ERModel, QuatE
@@ -143,6 +232,9 @@ def build_model(config: BaselineConfig, triples_factory):
         return QuatE(triples_factory=triples_factory, embedding_dim=config.dim,
                      entity_regularizer_kwargs=reg, relation_regularizer_kwargs=reg,
                      loss="bcewithlogits", loss_kwargs=dict(reduction="mean"), random_seed=config.seed)
+    if config.model == "quate_official":
+        return build_quate_official(triples_factory, config.dim, config.regularizer_weight, config.seed,
+                                    loss="bcewithlogits", loss_kwargs=dict(reduction="mean"))
     raise ValueError(f"unknown baseline {config.model!r}; expected one of {MODELS}")
 
 
@@ -201,7 +293,8 @@ def train(config: BaselineConfig, data: BaselineData, device: str = "cpu",
     loop = SLCWATrainingLoop(
         model=model, triples_factory=data.training,
         optimizer=torch.optim.Adam(model.get_grad_params(), lr=config.lr),
-        negative_sampler="basic",
+        # official QuatE (OpenKE, bern=1) picks head or tail by per-relation statistics
+        negative_sampler="bernoulli" if config.model == "quate_official" else "basic",
         negative_sampler_kwargs=dict(num_negs_per_pos=config.num_negatives, filtered=config.filtered_negatives,
                                      filterer=ExactFilterer if config.filtered_negatives else None,
                                      filterer_kwargs=dict(device=str(device)) if config.filtered_negatives else None),

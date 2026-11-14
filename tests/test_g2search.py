@@ -122,7 +122,7 @@ def small(model="rotate_official", **kw):
     return BaselineConfig(**{**base, **kw})
 
 
-@pytest.mark.parametrize("model", ["rotate_official", "quate_pykeen"])
+@pytest.mark.parametrize("model", ["rotate_official", "quate_pykeen", "quate_official"])
 def test_baseline_trains_evaluates_and_is_deterministic(data, model):
     from rtvm.baselines import train
     a = train(small(model), data, log=lambda *_: None)
