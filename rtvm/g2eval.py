@@ -43,6 +43,19 @@ def stratified_cycle_auc(pos_defect: np.ndarray, pos_length: np.ndarray, pos_rel
     return total / weight if weight else float("nan")
 
 
+def grouped_auc_rows(pos: np.ndarray, neg: np.ndarray) -> np.ndarray:
+    """Per-positive grouped AUC: for each positive, the fraction of its negatives scored below it,
+    ties counting 1/2 (protocol, "Grouped AUC"). Shape (n,). The gate's bootstrap resamples these.
+
+    No masks: the primary test uses every positive and every negative. Raises on NaN, because a
+    diverged model must never be scored silently.
+    """
+    pos, neg = np.asarray(pos, dtype=float), np.asarray(neg, dtype=float)
+    if np.isnan(pos).any() or np.isnan(neg).any():
+        raise ValueError("NaN score in grouped_auc_rows")
+    return ((neg < pos[:, None]) + 0.5 * (neg == pos[:, None])).mean(axis=1)
+
+
 def grouped_auc(pos: np.ndarray, neg: np.ndarray, pos_valid: np.ndarray | None = None,
                 neg_valid: np.ndarray | None = None) -> float:
     """EXERCISE. Protocol: "For each positive: the fraction of its 10 negatives scored
