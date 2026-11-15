@@ -156,7 +156,11 @@ def test_baseline_resume_and_deadline(data, tmp_path, device):
         assert len(rest["history"]) == len(full["history"])
 
 
-def test_holonomy_deadline_stops_after_a_checkpoint(tmp_path):
+# The cuda case is the holonomy search notebook's preflight (it also runs rtvm's cayley on the GPU,
+# which crashed in MAGMA on Kaggle T4s before d91ab20).
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(
+    not _cuda_available(), reason="needs a GPU"))])
+def test_holonomy_deadline_stops_after_a_checkpoint(tmp_path, device):
     from tests.test_train_holonomy import random_steps
     from rtvm.train_holonomy import HolonomyConfig, HolonomyData, train
 
@@ -169,12 +173,17 @@ def test_holonomy_deadline_stops_after_a_checkpoint(tmp_path):
     d = HolonomyData(E2, R2, tr, random_steps(rng, (len(tr),)), pos, random_steps(rng, (12,)),
                      neg, random_steps(rng, (12, 10)))
     cfg = HolonomyConfig(num_negatives=8, batch_size=32, eval_every=2, max_epochs=6, tf32=False)
-    full = train(cfg, d, log=lambda *_: None)
+    full = train(cfg, d, device=device, log=lambda *_: None)
     ckpt = tmp_path / "h.ckpt"
-    part = train(cfg, d, checkpoint=ckpt, log=lambda *_: None, deadline=time.time() - 1)
+    part = train(cfg, d, device=device, checkpoint=ckpt, log=lambda *_: None, deadline=time.time() - 1)
     assert not part["complete"] and part["epochs_run"] == 2
-    rest = train(cfg, d, checkpoint=ckpt, log=lambda *_: None)
-    assert rest["complete"] and rest["history"] == full["history"]
+    msgs = []
+    rest = train(cfg, d, device=device, checkpoint=ckpt, log=msgs.append)
+    assert msgs[0] == "resumed at epoch 2" and rest["complete"]
+    if device == "cpu":
+        assert rest["history"] == full["history"]             # resumed run matches the uninterrupted one
+    else:                                                      # bitwise equality is not promised on CUDA
+        assert [h["epoch"] for h in rest["history"]] == [h["epoch"] for h in full["history"]]
 
 
 def test_config_hash_ignores_line_endings(tmp_path):
