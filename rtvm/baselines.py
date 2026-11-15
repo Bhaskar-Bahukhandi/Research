@@ -33,6 +33,7 @@ from pykeen.sampling.filtering import Filterer
 from .g2eval import grouped_auc
 
 MODELS = ("rotate_official", "quate_pykeen", "quate_official")
+OPTIMIZERS = {"adam": "Adam", "adagrad": "Adagrad"}   # QuatE: Adagrad, as in its official code (note 2026-11-16)
 
 
 @dataclass
@@ -49,6 +50,7 @@ class BaselineConfig:
     batch_size: int = 1024
     filtered_negatives: bool = True
     loss: str = "nssa"
+    optimizer: str = "adam"
     eval_every: int = 10
     patience: int = 5
     max_epochs: int = 1000
@@ -283,6 +285,8 @@ def train(config: BaselineConfig, data: BaselineData, device: str = "cpu",
     from pykeen.training import SLCWATrainingLoop
     from pykeen.utils import set_random_seed
 
+    if config.optimizer not in OPTIMIZERS:
+        raise ValueError(f"unknown optimizer {config.optimizer!r}; expected one of {sorted(OPTIMIZERS)}")
     device = torch.device(device)
     if device.type == "cuda" and device.index is not None:
         torch.cuda.set_device(device)
@@ -292,7 +296,7 @@ def train(config: BaselineConfig, data: BaselineData, device: str = "cpu",
     model = build_model(config, data.training).to(device)
     loop = SLCWATrainingLoop(
         model=model, triples_factory=data.training,
-        optimizer=torch.optim.Adam(model.get_grad_params(), lr=config.lr),
+        optimizer=getattr(torch.optim, OPTIMIZERS[config.optimizer])(model.get_grad_params(), lr=config.lr),
         # official QuatE (OpenKE, bern=1) picks head or tail by per-relation statistics
         negative_sampler="bernoulli" if config.model == "quate_official" else "basic",
         negative_sampler_kwargs=dict(num_negs_per_pos=config.num_negatives, filtered=config.filtered_negatives,

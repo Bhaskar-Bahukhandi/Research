@@ -10,7 +10,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from rtvm.g2search import BUDGET, CONFIGS, N_TRIALS, check_budget, load_spec, sample_trials, select_best
+from rtvm.g2search import (BUDGET, CONFIGS, N_TRIALS, check_budget, fixed_values, load_spec, sample_trials,
+                           select_best)
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZES = {"fb15k237": (14_505, 237), "wn18rr": (40_559, 11)}
@@ -47,8 +48,9 @@ def test_select_best():
 
 # ---------------------------------------------------------------- the committed configs
 
+@pytest.mark.parametrize("dataset", sorted(BUDGET))
 @pytest.mark.parametrize("model", sorted(CONFIGS))
-def test_config_values_match_the_trainer(model):
+def test_config_values_match_the_trainer(model, dataset):
     from rtvm.baselines import BaselineConfig
     from rtvm.train_holonomy import HolonomyConfig
 
@@ -56,15 +58,34 @@ def test_config_values_match_the_trainer(model):
     cls = HolonomyConfig if model == "holonomy" else BaselineConfig
     fields = {f.name for f in dataclasses.fields(cls)}
     trial = sample_trials(spec["search"], 1, 0)[0]
-    assert set(spec["fixed"]) <= fields and set(trial) <= fields
-    assert not set(spec["fixed"]) & set(trial)            # a value is fixed or searched, never both
+    fixed = fixed_values(spec, dataset)
+    assert set(fixed) <= fields and set(trial) <= fields
+    assert not set(fixed) & set(trial)                    # a value is fixed or searched, never both
     if model != "holonomy":
-        cls(model=spec["model"], dim=spec["dim"]["fb15k237"], **spec["fixed"], **trial)
+        cls(model=spec["model"], dim=spec["dim"][dataset], **fixed, **trial)
     else:
-        cls(**spec["fixed"], **trial)
-    assert spec["fixed"]["eval_every"] == 10 and spec["fixed"]["patience"] == 5
-    assert spec["fixed"]["max_epochs"] == 1000            # shared protocol rules
-    assert spec["fixed"]["batch_size"] == 1024
+        cls(**fixed, **trial)
+    assert fixed["eval_every"] == 10 and fixed["patience"] == 5
+    assert fixed["max_epochs"] == 1000                    # shared protocol rules
+    assert fixed["batch_size"] == 1024 and fixed["tf32"] is True
+
+
+def test_quate_config_follows_the_2026_11_16_note():
+    spec = load_spec(ROOT / CONFIGS["quate"])
+    assert spec["model"] == "quate_official"
+    assert fixed_values(spec, "fb15k237")["num_negatives"] == 10 and fixed_values(spec, "wn18rr")["num_negatives"] == 1
+    fixed = fixed_values(spec, "fb15k237")
+    assert fixed["optimizer"] == "adagrad" and fixed["filtered_negatives"] is True and fixed["loss"] == "bcewithlogits"
+    assert spec["search"]["lr"] == {"log_uniform": [0.02, 0.5]}
+    assert spec["search"]["regularizer_weight"] == {"log_uniform": [1.0e-3, 1.0]}
+
+
+def test_fixed_values_resolves_per_dataset_entries():
+    spec = {"fixed": {"a": 1, "b": {"fb15k237": 10, "wn18rr": 1}}}
+    assert fixed_values(spec, "fb15k237") == {"a": 1, "b": 10}
+    assert fixed_values(spec, "wn18rr") == {"a": 1, "b": 1}
+    with pytest.raises(ValueError):
+        fixed_values(spec, "nations")
 
 
 def test_margin_range_is_attainable_for_every_rank():
@@ -88,7 +109,7 @@ def test_every_model_fits_the_budget(dataset):
     tf = CoreTriplesFactory.create(torch.tensor([[0, 0, 1], [1, R - 1, 2]]), num_entities=E, num_relations=R)
     for model in ("rotate", "quate"):
         spec = load_spec(ROOT / CONFIGS[model])
-        cfg = BaselineConfig(model=spec["model"], dim=spec["dim"][dataset], **spec["fixed"],
+        cfg = BaselineConfig(model=spec["model"], dim=spec["dim"][dataset], **fixed_values(spec, dataset),
                              **sample_trials(spec["search"], 1, 0)[0])
         check_budget(count_parameters(build_model(cfg, tf)), dataset)
 
@@ -130,6 +151,34 @@ def test_baseline_trains_evaluates_and_is_deterministic(data, model):
     assert a["epochs_run"] == 6 and len(a["history"]) == 3 and a["complete"]
     assert all(0 <= h["v1_auc"] <= 1 and np.isfinite(h["loss"]) for h in a["history"])
     assert a["history"] == b["history"]
+
+
+def test_baseline_optimizer_is_the_configured_one(data, tmp_path):
+    import torch
+
+    from rtvm.baselines import train
+    for name, state_key in (("adam", "exp_avg"), ("adagrad", "sum")):
+        ckpt = tmp_path / f"{name}.ckpt"
+        out = train(small("quate_official", optimizer=name, filtered_negatives=True, lr=0.1), data,
+                    checkpoint=ckpt, log=lambda *_: None)
+        assert out["complete"] and all(np.isfinite(h["loss"]) for h in out["history"])
+        state = torch.load(ckpt, weights_only=False)["optimizer"]["state"]
+        assert state and all(state_key in s for s in state.values())
+    with pytest.raises(ValueError):
+        train(small(optimizer="sgd"), data, log=lambda *_: None)
+
+
+def test_quate_official_adagrad_resumes_exactly(data, tmp_path):
+    """The G2 QuatE setting (Adagrad, exact-filtered Bernoulli negatives) resumes like RotatE."""
+    from rtvm.baselines import train
+    cfg = small("quate_official", optimizer="adagrad", filtered_negatives=True, lr=0.1)
+    full = train(cfg, data, log=lambda *_: None)
+    ckpt = tmp_path / "q.ckpt"
+    part = train(cfg, data, checkpoint=ckpt, log=lambda *_: None, deadline=time.time() - 1)
+    assert not part["complete"] and part["epochs_run"] == 2
+    msgs = []
+    rest = train(cfg, data, checkpoint=ckpt, log=msgs.append)
+    assert msgs[0] == "resumed at epoch 2" and rest["complete"] and rest["history"] == full["history"]
 
 
 def _cuda_available():

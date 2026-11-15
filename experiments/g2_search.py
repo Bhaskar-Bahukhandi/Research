@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from rtvm.g2search import (BUDGET, CONFIGS, N_TRIALS, TRIAL_SEED, check_budget, file_sha256,  # noqa: E402
-                           load_spec, sample_trials, select_best)
+                           fixed_values, load_spec, sample_trials, select_best)
 
 
 def git_state() -> dict:
@@ -141,7 +141,7 @@ def main() -> None:
         data = trainer.load_data(args.dataset, saved=args.saved, data=args.data)
 
         def make(values, seed):
-            return trainer.HolonomyConfig(**{**spec["fixed"], **values, "seed": seed})
+            return trainer.HolonomyConfig(**{**fixed_values(spec, args.dataset), **values, "seed": seed})
 
         def parameters(cfg):
             return count_parameters(HolonomyModel(data.num_entities, data.num_relations, rank=cfg.rank))
@@ -152,7 +152,7 @@ def main() -> None:
 
         def make(values, seed):
             return trainer.BaselineConfig(model=spec["model"], dim=spec["dim"][args.dataset],
-                                          **{**spec["fixed"], **values, "seed": seed})
+                                          **{**fixed_values(spec, args.dataset), **values, "seed": seed})
 
         def parameters(cfg):
             return count_parameters(trainer.build_model(cfg, data.training))

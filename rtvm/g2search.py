@@ -29,6 +29,19 @@ def load_spec(path: str | Path) -> dict:
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
 
 
+def fixed_values(spec: dict, dataset: str) -> dict:
+    """The config's fixed values for one dataset. A value given as a mapping is per dataset
+    ({fb15k237: 10, wn18rr: 1}, protocol note 2026-11-16); a mapping without this dataset is an error."""
+    out = {}
+    for name, value in spec["fixed"].items():
+        if isinstance(value, dict):
+            if dataset not in value:
+                raise ValueError(f"fixed value {name!r} has no entry for {dataset!r}")
+            value = value[dataset]
+        out[name] = value
+    return out
+
+
 def file_sha256(path: str | Path) -> str:
     """SHA-256 of a text file with CRLF read as LF, so a Windows checkout (git autocrlf)
     and a Linux checkout (Kaggle, Colab) of the same commit give the same hash."""

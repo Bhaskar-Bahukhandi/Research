@@ -147,6 +147,51 @@ Each change keeps the original value visible.
     - **What the feature measures:** the null holonomy therefore mostly measures the share of a triple's sampled cycles that close trivially, together with coverage. It does **not** reproduce the path-length effect described in the 2026-11-10 note, which arises for near-identity rotations. In B₀ that effect is absorbed by the path counts and the length shares, not by the null holonomy.
     - **Unchanged:** the feature stays as specified. This is recorded so that the paper describes it correctly.
   - **Unchanged:** the features, combiners, grouped AUC, statistic, bootstrap size and seed, threshold 0.005, and the four named outcomes.
+- **2026-11-16 (before any QuatE trial), which QuatE, and how it trains.** Approved by me on 16 Nov 2026. This is the decision the 2026-11-08 note deferred ("before QuatE is used in S5 or S6, it gets the same check against its official code"). QuatE is secondary (S5, S6) and is not part of the gate.
+  - **Evidence:** the official-code check in `notes/quate_check.md`, and an implementation check under the 2026-11-06 note.
+    - **Code comparison** with github.com/cheungdaven/QuatE `77cdd49f2bc2` (QuatE¹). PyKEEN 1.11.1's QuatE has the official score, but differs in regularisation and initialisation:
+      - its relation regulariser is applied after normalisation and has no effect (gradient about 1e-7);
+      - its entity regulariser uses the unsquared modulus;
+      - it initialises relations √(n_entities/n_relations) times larger than the official code.
+    - **Reproduction** of `quate_official` at the official settings (dimension 100, Adagrad 0.1, exact-filtered Bernoulli negatives, 10 on FB15k-237 and 1 on WN18RR, 5,000 / 40,000 epochs; seed 0; Kaggle T4; code `a908e0c`):
+      - WN18RR reproduces: MRR 0.480 against the published 0.481, after counting back the test triples PyKEEN drops.
+      - FB15k-237 is 0.023 MRR below the published value (0.288 against 0.311), about 7% relative. Validation Hits@10 was still rising at the last validation (epoch 5,000). The causes were not tested.
+    - **Not run:** stock PyKEEN QuatE at the official settings. The preference below rests on the code differences and on the reproduction, not on a measured gain over the stock model.
+  - **Principle, as for RotatE (2026-11-08):** QuatE follows its official code wherever that does not conflict with a rule shared by every G2 model. The shared rules are:
+    - the parameter budget;
+    - batch size 1,024;
+    - the V₁ metric, the evaluation schedule, patience and the 1,000-epoch cap;
+    - TF32 training with strict FP32 evaluation;
+    - 20 trials.
+
+    A weak baseline would make S5 and S6 flatter holonomy, so ties go to the choice that favours QuatE.
+  - **Change 1, model:** the G2 QuatE is the official-code definition, `rtvm.baselines.build_quate_official` (model name `quate_official`).
+    - The score is the official one, with relations normalised to unit quaternions inside the score.
+    - Both regularisers use squared moduli of the raw parameters, pooled over every scored row, with one weight λ.
+    - Relations are initialised with the entity-count fan-in.
+    - Dimensions are unchanged, 34 on FB15k-237 and 32 on WN18RR, and so are the parameter counts (2,004,912 and 5,192,960): the official definition stores the same tensors.
+  - **Change 2, training negatives:** they follow the official code.
+    - Head or tail is chosen by PyKEEN's Bernoulli sampler (per-relation statistics, as OpenKE's `bern=1`).
+    - Negatives are exactly filtered against the training triples with `ExactFilterer`. As for RotatE, a filtered negative is dropped, not redrawn.
+    - **10 negatives per positive on FB15k-237, and 1 on WN18RR**, instead of the provisional 256. The provisional comment "filtering is a RotatE-only choice" is withdrawn: the official QuatE code filters too.
+    - **Why not 256:** under QuatE's plain mean BCE loss, positives would make up 1/257 of the loss, against 1/11 and 1/2 in the official setting. RotatE's 256 comes from RotatE's own official code, whose self-adversarial loss reweights negatives.
+  - **Change 3, optimiser:** **Adagrad**, as in the official code, instead of Adam. The learning rate is searched log-uniform in [0.02, 0.5], around the official 0.1. Adagrad's accumulators are part of the checkpoint, as Adam's are.
+  - **Unchanged:**
+    - the loss (softplus of the signed score, the mean over positives and negatives);
+    - the regulariser-weight range, log-uniform in [0.001, 1], which contains the official 0.3 (FB15k-237) and 0.1 (WN18RR);
+    - batch 1,024 and every other shared rule above;
+    - V₁ metric = grouped AUC of `score_hrt`.
+
+    The official schedule (batch = train/10; 5,000 or 40,000 epochs; validation Hits@10) is not carried over, because G2 trains every model to early stopping under one set of rules.
+  - **Config:** `configs/g2_quate.yaml` changes with this note, before any QuatE trial:
+    - `model: quate_official`;
+    - `num_negatives` per dataset;
+    - `filtered_negatives: true`;
+    - `optimizer: adagrad`;
+    - the new lr range.
+
+    The 20 trials are drawn again from the new ranges with trial seed 0. No QuatE trial has been run, so nothing is discarded.
+  - **Before the search:** a timing run of QuatE trial 0 on a Kaggle T4, as for the other models. Its run continues as part of the search.
 
 ## G2 (H2) in full
 

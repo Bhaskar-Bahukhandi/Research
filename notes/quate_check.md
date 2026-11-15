@@ -91,4 +91,4 @@ Following the RotatE check, the official definition is now implemented next to t
     - filtered negatives are dropped rather than redrawn;
     - one seed only.
   - **The stock PyKEEN variant was not run**, so this check does not show how much the official definition gains over it. The code differences (items 5–7) are the evidence for preferring the official definition.
-- **Next:** decide which QuatE G2 uses (S5, S6), and its sampler, optimiser and negatives, in a dated protocol note before any QuatE trial.
+- **Decided** in protocol note 2026-11-16, before any QuatE trial: G2 uses `quate_official`, with exact-filtered Bernoulli negatives (10 on FB15k-237, 1 on WN18RR) and Adagrad (lr searched in [0.02, 0.5]); `configs/g2_quate.yaml` changed with that note.
