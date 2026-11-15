@@ -161,7 +161,7 @@ def test_baseline_resume_and_deadline(data, tmp_path, device):
 @pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(
     not _cuda_available(), reason="needs a GPU"))])
 def test_holonomy_deadline_stops_after_a_checkpoint(tmp_path, device):
-    from tests.test_train_holonomy import random_steps
+    from test_train_holonomy import random_steps        # not tests.*: an installed "tests" package can shadow ours (Kaggle, 2026-11-15)
     from rtvm.train_holonomy import HolonomyConfig, HolonomyData, train
 
     rng = np.random.default_rng(0)
