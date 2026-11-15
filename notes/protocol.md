@@ -106,6 +106,47 @@ Each change keeps the original value visible.
     - **Speed of the exact filter** (notebook `rtvm-g2-rotate-profile2`, FB15k-237 on a T4): 21.2 s per epoch with the search on the CPU, and 15.2 s with the search on the training GPU, which is what `rtvm.baselines.train` uses. With two runs at once on the two T4s: 16.5 s per epoch each, and WN18RR 5.4 s.
   - **Change:** RotatE's filtered training negatives use `ExactFilterer`. As before, a filtered negative is dropped, not redrawn (a PyKEEN difference from the official code, recorded in `experiments/reproduce_rotate.py`). The official code also filters exactly, so this follows the 2026-11-08 note more closely. Configs, ranges and every other rule are unchanged. QuatE's negatives are not filtered, so it is unaffected.
   - **The timing run is discarded.** RotatE trial 0 was started on Kaggle on 10 Nov 2026 (notebook `rtvm-g2-rotate-timing`, commit `47b3271`) with the Bloom filter, and stopped by its time limit after 40 epochs on FB15k-237 and 120 on WN18RR. Its checkpoints are not resumed: the RotatE search starts again from trial 0 with the exact filter, in a fresh output folder. Its V₁ values were logged but are not used for anything.
+- **2026-11-15 (before any holonomy-model training, before the test freeze), the gate's unnamed outcome, its implementation choices, and what the null holonomy controls for.** Approved by me on 15 Nov 2026. The gate scripts were committed as `953308e` (`rtvm/g2gate.py`, `experiments/g2_gate.py`).
+  - **Evidence used:** code review and a negative control only.
+    - No holonomy model has been trained, and no test split has been touched.
+    - The negative control fitted B₀ and B₁ on one half of V₂ and evaluated them on the other half. RotatE seeds 0–2 were used, and Gaussian noise replaced the holonomy feature. It gave Δ̄ = −0.0002, 95% CI −0.0006 to +0.0002, "fail, no added information", as expected.
+    - B₀'s grouped AUC on that V₂ half was 0.881–0.884. This is a V₂ number about the baseline only. It is recorded here because it was seen, and it changes nothing below.
+  - **Change 1: the outcome the Decision rule does not name.** The rule lists pass, negligible, fail (no added information) and fail (holonomy hurts). It does not name the case where the CI's lower bound is ≥ 0.005 but Δ_s ≤ 0 in at least one seed.
+    - This case is **not a pass**: pass requires both conditions.
+    - It is reported as its own outcome, **"not pass: not positive in every seed"**, and counts as a failed gate.
+    - The other four outcomes are unchanged. "The CI contains 0" includes a bound exactly at 0.
+  - **Change 2: implementation choices the protocol left open.** They are fixed as in `rtvm/g2gate.py`, whose module docstring is the full list. The main ones:
+    - **Features:**
+      - The length shares are 0 for uncovered triples.
+      - The null rotations are drawn for relation r = 0, 1, …, R − 1 in order from one generator seeded with 0, as `random_rotation(2, 64)`, in FP32.
+      - Holonomy scores, null and learned, are computed once per distinct pair (path steps, closing relation) and copied to every cycle with that pair. This is the protocol's mean over cycles; only the arithmetic is shared.
+    - **Combiners:**
+      - Standardisation uses the mean and population standard deviation of all V₂ rows, positives and negatives pooled. A constant column keeps scale 1.
+      - The logistic regression uses no class weights and lbfgs (tol 1e-6, at most 10,000 iterations). A fit that does not converge is an error.
+      - Test rows are ranked by the log-odds.
+    - **Bootstrap:**
+      - The clusters are the relations that occur among the test positives.
+      - All 10,000 resamples are drawn at once with `default_rng(0).integers(0, G, size=(10000, G))`.
+      - A cluster drawn twice counts twice.
+      - The CI uses `numpy.percentile` (linear) at 2.5 and 97.5.
+    - **Timing rule, made mechanical.** The test split is read only when all of these hold:
+      - the tree is clean;
+      - this file contains a single line "G2 test freeze: commit <40-hex hash>";
+      - nothing in `rtvm/`, `configs/`, `saved/g2/` or the G2 scripts has changed since that commit;
+      - the manifest equals the committed one.
+
+      In addition:
+      - Every feature file records the code that made it, and features made by any other code are refused. V₂ features are therefore recomputed after the freeze.
+      - Every model run must carry the committed config's hash, and seeds 1 and 2 must use the best trial's values.
+      - `gate.json` is written once.
+  - **Change 3, a clarification with no change to the features: what the null holonomy controls for.**
+    - **Expected size:** a Haar-random rotation H in SO(64) has E‖H − I‖²_F = 2 · 64 per block. With two blocks, almost every null cycle therefore has a defect near √256 = 16.
+    - **The exception:** a cycle has defect 0 when the path's relation word, closed by r backwards, reduces to the empty word. Examples:
+      - a parallel training fact with the same relation r;
+      - a step along s followed by a step back along another s fact, in a path that then follows r.
+    - **What the feature measures:** the null holonomy therefore mostly measures the share of a triple's sampled cycles that close trivially, together with coverage. It does **not** reproduce the path-length effect described in the 2026-11-10 note, which arises for near-identity rotations. In B₀ that effect is absorbed by the path counts and the length shares, not by the null holonomy.
+    - **Unchanged:** the feature stays as specified. This is recorded so that the paper describes it correctly.
+  - **Unchanged:** the features, combiners, grouped AUC, statistic, bootstrap size and seed, threshold 0.005, and the four named outcomes.
 
 ## G2 (H2) in full
 
