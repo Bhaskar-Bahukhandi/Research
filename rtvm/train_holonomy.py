@@ -210,7 +210,7 @@ def _batch_loss(model, data, idx, n_paths, train_keys, config, rng, device):
     neg_h = np.where(head_side, ent, tr[:, [0]])
     neg_t = np.where(head_side, tr[:, [2]], ent)
     pos_d = model.single_distance(as_t(tr[:, 0]), as_t(tr[:, 1]), as_t(tr[:, 2]), R)
-    neg_d = model.single_distance(as_t(neg_h), as_t(np.repeat(tr[:, [1]], k, axis=1)), as_t(neg_t), R)
+    neg_d = model.single_distance(as_t(neg_h), as_t(tr[:, 1]), as_t(neg_t), R)    # relation shared per row
     loss = nssa_loss(pos_d, neg_d, gamma=config.gamma, temperature=config.temperature)
 
     # cycle term: C paths per covered triple, drawn with replacement from its saved paths

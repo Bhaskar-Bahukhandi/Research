@@ -62,9 +62,21 @@ class HolonomyModel(nn.Module):
         return torch.cat([R, R.transpose(-1, -2), eye])
 
     def single_distance(self, h: Tensor, r: Tensor, t: Tensor, R: Tensor | None = None) -> Tensor:
-        """||U_r psi_h - psi_t|| for index tensors of one shape; returns that shape."""
+        """||U_r psi_h - psi_t||; returns h's shape.
+
+        r has h's shape, or h's shape without its last axis: then row i's relation is shared by
+        all of h[i, :] (a positive's negatives). The shared form applies one rotation per row
+        instead of gathering a copy per entry: with 1,024 positives x 256 negatives, the
+        per-entry gather R[r] would be 262,144 copies of a 2 x 64 x 64 rotation (8.6 GB).
+        """
         R = self.rotations() if R is None else R
-        moved = block_apply(R[r], self.psi[h])
+        if r.dim() == h.dim():
+            moved = block_apply(R[r], self.psi[h])
+        elif r.dim() == h.dim() - 1:
+            xb = self.psi[h].reshape(*h.shape, self.n_blocks, self.b)
+            moved = torch.einsum("...nij,...knj->...kni", R[r], xb).reshape(*h.shape, self.d)
+        else:
+            raise ValueError("r must have h's shape, or h's shape without the last axis")
         return (moved - self.psi[t]).norm(dim=-1)
 
 

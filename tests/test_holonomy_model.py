@@ -72,6 +72,24 @@ def test_single_distance():
         assert torch.isclose(m.single_distance(h, r, t)[i], (moved - m.psi[t[i]]).norm(), atol=1e-5)
 
 
+def test_single_distance_with_a_shared_relation_per_row():
+    """The negatives' form (one relation per positive, no per-entry rotation copies) equals the
+    per-entry form, values and gradients."""
+    m = small_model()
+    g = torch.Generator().manual_seed(0)
+    n_ent = m.psi.shape[0]
+    h, t = torch.randint(n_ent, (4, 7), generator=g), torch.randint(n_ent, (4, 7), generator=g)
+    r = torch.tensor([0, 4, 2, 4])
+    shared = m.single_distance(h, r, t)
+    full = m.single_distance(h, r[:, None].expand(4, 7), t)
+    assert shared.shape == (4, 7) and torch.allclose(shared, full, atol=1e-5)
+    g1 = torch.autograd.grad(shared.sum(), [m.psi, m.U, m.V])
+    g2 = torch.autograd.grad(full.sum(), [m.psi, m.U, m.V])
+    assert all(torch.allclose(a, b, atol=1e-5) for a, b in zip(g1, g2))
+    with pytest.raises(ValueError):
+        m.single_distance(h, r[:2, None, None].expand(2, 1, 1), t)
+
+
 def test_cycle_defect_is_zero_when_path_equals_closing_rotation():
     m = small_model()
     T = m.table()
