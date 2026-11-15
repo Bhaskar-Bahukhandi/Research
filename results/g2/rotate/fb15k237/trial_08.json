@@ -1,0 +1,110 @@
+{
+ "config": {
+  "model": "rotate_official",
+  "dim": 68,
+  "lr": 0.0015976406401691679,
+  "gamma": 3.0,
+  "temperature": 1.0,
+  "regularizer_weight": 0.01,
+  "num_negatives": 256,
+  "batch_size": 1024,
+  "filtered_negatives": true,
+  "loss": "nssa",
+  "eval_every": 10,
+  "patience": 5,
+  "max_epochs": 1000,
+  "tf32": true,
+  "seed": 0
+ },
+ "best_v1_auc": 0.8530183727034122,
+ "best_epoch": 60,
+ "epochs_run": 110,
+ "complete": true,
+ "epochs_this_process": 110,
+ "history": [
+  {
+   "epoch": 10,
+   "loss": 0.4444669824905862,
+   "v1_auc": 0.8419605158050896
+  },
+  {
+   "epoch": 20,
+   "loss": 0.39605301736216797,
+   "v1_auc": 0.8488417208718476
+  },
+  {
+   "epoch": 30,
+   "loss": 0.39706465263563884,
+   "v1_auc": 0.8498801780212256
+  },
+  {
+   "epoch": 40,
+   "loss": 0.3970144082953159,
+   "v1_auc": 0.852059796873217
+  },
+  {
+   "epoch": 50,
+   "loss": 0.3968738248921875,
+   "v1_auc": 0.8513865114686752
+  },
+  {
+   "epoch": 60,
+   "loss": 0.3966921629650252,
+   "v1_auc": 0.8530183727034122
+  },
+  {
+   "epoch": 70,
+   "loss": 0.39661781303864674,
+   "v1_auc": 0.851808741298642
+  },
+  {
+   "epoch": 80,
+   "loss": 0.3966215433594876,
+   "v1_auc": 0.8528814332990985
+  },
+  {
+   "epoch": 90,
+   "loss": 0.3964301315913523,
+   "v1_auc": 0.8529270797672031
+  },
+  {
+   "epoch": 100,
+   "loss": 0.3964499642750375,
+   "v1_auc": 0.852230971128609
+  },
+  {
+   "epoch": 110,
+   "loss": 0.3962794328766658,
+   "v1_auc": 0.8527330822777589
+  }
+ ],
+ "train_seconds": 1855.2936189174652,
+ "parameters": 1988796,
+ "device": "Tesla T4",
+ "tf32_training": true,
+ "evaluation": "strict FP32",
+ "deterministic_algorithms": "warn_only",
+ "versions": {
+  "torch": "2.11.0+cu130",
+  "cuda": "13.0",
+  "numpy": "2.1.3",
+  "pykeen": "1.11.1"
+ },
+ "data_provenance": {
+  "manifest_sha256": "ffe08ec30fd9a7a41906c28d42dc7f95102fdf40fca727f1205b5f4bfdde8151",
+  "data_code_commit": "70cf4a359822bd99633598f653ef014f9cbbf8f2"
+ },
+ "name": "trial_08",
+ "values": {
+  "lr": 0.0015976406401691679,
+  "gamma": 3.0,
+  "temperature": 1.0
+ },
+ "seed": 0,
+ "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124",
+ "git": {
+  "commit": "3c5ba66bf409e80634b1ffee26622e35bd26be9e",
+  "dirty": false
+ },
+ "finished": "2026-11-11 23:48:21"
+}

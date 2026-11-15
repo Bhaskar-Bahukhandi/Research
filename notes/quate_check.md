@@ -54,4 +54,14 @@ Following the RotatE check, the official definition is now implemented next to t
 
 - **Model:** `rtvm.baselines.build_quate_official` (model name `quate_official`). Relations are stored raw and normalised inside the score. Both regularisers use squared moduli on raw parameters, pooled over every scored row. Relations are initialised with the entity-count fan-in. `tests/test_quate_official.py` checks the score against the official `_calc` written out component by component, and checks the regulariser against the official term over positive and negative rows. It also checks the relation-init bound and that the relation regulariser has a gradient. In the G2 trainer, `quate_official` samples negatives with PyKEEN's Bernoulli sampler.
 - **Run script:** `experiments/reproduce_quate.py` trains `official` or `stock` (PyKEEN's bundled zhang2019 settings) at the official settings: dimension 100, Adagrad 0.1, official epochs and negatives. It keeps the best validation Hits@10 weights, as the official code does, and reports filtered test MRR. It saves a checkpoint every 50 epochs and resumes exactly, including RNG state, which was checked on Nations. This is an implementation check under the 2026-11-06 note, with test metrics used only to check the implementation.
-- **Next:** time both variants on a Kaggle T4, then decide which full runs to make.
+- **Timing (2026-11-14, Kaggle T4, code at `aea1be7`, notebook `rtvm-quate-timing`):** one warm-up epoch, then 3 (FB15k-237) or 20 (WN18RR) timed epochs and one validation evaluation (eval batch 256, no out-of-memory error). Projected full runs at the official settings:
+
+  | Run | Batch | s/epoch | Validation eval | Projected |
+  | --- | --- | --- | --- | --- |
+  | FB15k-237 official | 27,211 | 6.08 | 57 s (×5) | 8.5 h |
+  | FB15k-237 stock | 9,300 | 5.52 | 56 s (×5) | 7.7 h |
+  | WN18RR official | 8,683 | 0.66 | 27 s (×4) | 7.4 h |
+  | WN18RR stock | 9,300 | 0.62 | 31 s (×4) | 7.0 h |
+
+  The projections exclude start-up and the final validation and test evaluation, which take a few minutes. A two-GPU session can run one FB15k-237 and one WN18RR run side by side, and Kaggle counts that session's time once.
+- **Next:** decide which full runs to make.

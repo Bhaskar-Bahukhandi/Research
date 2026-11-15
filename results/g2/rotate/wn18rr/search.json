@@ -1,0 +1,114 @@
+{
+ "model": "rotate",
+ "dataset": "wn18rr",
+ "config": "configs/g2_rotate.yaml",
+ "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124",
+ "trial_seed": 0,
+ "trials": [
+  {
+   "lr": 0.0005636955798449844,
+   "gamma": 12.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 3.622999737698441e-05,
+   "gamma": 3.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 0.0012695848552432588,
+   "gamma": 12.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.0004902220099274931,
+   "gamma": 24.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.00036675094170285865,
+   "gamma": 12.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.0012847788035991296,
+   "gamma": 18.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 0.0015557141716341092,
+   "gamma": 12.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 0.0008638376876201957,
+   "gamma": 24.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 0.0015976406401691679,
+   "gamma": 3.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.00011927379448756918,
+   "gamma": 9.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 3.417909797472719e-05,
+   "gamma": 3.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 0.0006582184994289016,
+   "gamma": 12.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.0005103774499675891,
+   "gamma": 18.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 0.002961700415669866,
+   "gamma": 18.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.0007050261468364131,
+   "gamma": 24.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.0007145205368531895,
+   "gamma": 18.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 5.588744619503133e-05,
+   "gamma": 12.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.00033715522904377825,
+   "gamma": 9.0,
+   "temperature": 0.5
+  },
+  {
+   "lr": 0.00028105542488087506,
+   "gamma": 18.0,
+   "temperature": 1.0
+  },
+  {
+   "lr": 0.0022141563592876193,
+   "gamma": 12.0,
+   "temperature": 0.5
+  }
+ ],
+ "git": {
+  "commit": "c5c44e2285302c0afafa1cd02a11264bf6f6178c",
+  "dirty": false
+ },
+ "created": "2026-11-10 08:17:52"
+}
