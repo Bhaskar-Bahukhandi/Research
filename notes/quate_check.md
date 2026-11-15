@@ -64,4 +64,31 @@ Following the RotatE check, the official definition is now implemented next to t
   | WN18RR stock | 9,300 | 0.62 | 31 s (×4) | 7.0 h |
 
   The projections exclude start-up and the final validation and test evaluation, which take a few minutes. A two-GPU session can run one FB15k-237 and one WN18RR run side by side, and Kaggle counts that session's time once.
-- **Next:** decide which full runs to make.
+- **Full runs (2026-11-15).**
+  - **Setup:** the official variant only, seed 0, official settings, one Kaggle T4 per dataset. Notebook `rtvm-quate-repro`, code at `a908e0c`.
+  - **Training time:** 7.8 h on FB15k-237 and 6.5 h on WN18RR.
+  - **Best weights:** chosen by validation Hits@10, as in the official code. For both datasets they came from the **last** validation (epochs 5,000 and 40,000). Validation Hits@10 was still rising:
+    - FB15k-237: 0.455, 0.459, 0.469, 0.469, 0.473;
+    - WN18RR: 0.572, 0.580, 0.585, 0.589.
+  - **Test metrics:** filtered, realistic rank. Optimistic and pessimistic ranks give the same MRR, so ties play no part.
+
+  | Dataset | Variant | MRR | Hits@1 | Hits@10 |
+  | --- | --- | --- | --- | --- |
+  | FB15k-237 | official, PyKEEN test set | 0.288 | 0.199 | 0.468 |
+  | FB15k-237 | official, adjusted ×0.9986 | 0.288 | 0.198 | 0.467 |
+  | FB15k-237 | published QuatE¹ | 0.311 | 0.221 | 0.495 |
+  | WN18RR | official, PyKEEN test set | 0.514 | 0.469 | 0.594 |
+  | WN18RR | official, adjusted ×0.933 | 0.480 | 0.438 | 0.554 |
+  | WN18RR | published QuatE¹ | 0.481 | 0.436 | 0.564 |
+
+  The adjustment counts back the test triples that PyKEEN drops, with reciprocal rank ≈ 0, as in `notes/baseline_reproduction.md`; it is an assumption, not a measurement.
+- **Reading:**
+  - **WN18RR reproduces** after the adjustment: MRR and Hits@1 are within 0.002 of the published values, and Hits@10 is 0.010 below.
+  - **FB15k-237 is 0.023 below on MRR and Hits@1, and 0.028 below on Hits@10, about 7% relative.** That is a larger gap than the RotatE reproduction's 0.010.
+  - **Plausible causes** (none was tested):
+    - training was still improving at the official 5,000 epochs;
+    - PyKEEN shuffles each epoch, where OpenKE draws batch rows with replacement;
+    - filtered negatives are dropped rather than redrawn;
+    - one seed only.
+  - **The stock PyKEEN variant was not run**, so this check does not show how much the official definition gains over it. The code differences (items 5–7) are the evidence for preferring the official definition.
+- **Next:** decide which QuatE G2 uses (S5, S6), and its sampler, optimiser and negatives, in a dated protocol note before any QuatE trial.
