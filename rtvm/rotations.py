@@ -47,7 +47,26 @@ def cayley(A: Tensor) -> Tensor:
     """
     size = A.shape[-1]
     eye = torch.eye(size, dtype=A.dtype, device=A.device)
+    if A.is_cuda:
+        _prefer_cusolver()
     return torch.linalg.solve(eye + A, eye - A)
+
+
+_CUSOLVER_SET = False
+
+
+def _prefer_cusolver() -> None:
+    """Route CUDA linear solves to cuSOLVER/cuBLAS instead of MAGMA, once per process.
+
+    2026-11-15: on Kaggle T4s (torch built against CUDA 13.0), batched torch.linalg.solve
+    went to MAGMA's sgetrf_batched and crashed with an illegal memory access on the first
+    call, even for 22 matrices. Same maths (LU with partial pivoting), different library.
+    Not called on CPU, where a CPU-only torch build rejects the setting.
+    """
+    global _CUSOLVER_SET
+    if not _CUSOLVER_SET:
+        torch.backends.cuda.preferred_linalg_library("cusolver")
+        _CUSOLVER_SET = True
 
 
 def lowrank_skew(U: Tensor, V: Tensor) -> Tensor:
