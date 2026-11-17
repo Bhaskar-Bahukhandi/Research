@@ -168,22 +168,29 @@ def test_baseline_optimizer_is_the_configured_one(data, tmp_path):
         train(small(optimizer="sgd"), data, log=lambda *_: None)
 
 
-def test_quate_official_adagrad_resumes_exactly(data, tmp_path):
-    """The G2 QuatE setting (Adagrad, exact-filtered Bernoulli negatives) resumes like RotatE."""
-    from rtvm.baselines import train
-    cfg = small("quate_official", optimizer="adagrad", filtered_negatives=True, lr=0.1)
-    full = train(cfg, data, log=lambda *_: None)
-    ckpt = tmp_path / "q.ckpt"
-    part = train(cfg, data, checkpoint=ckpt, log=lambda *_: None, deadline=time.time() - 1)
-    assert not part["complete"] and part["epochs_run"] == 2
-    msgs = []
-    rest = train(cfg, data, checkpoint=ckpt, log=msgs.append)
-    assert msgs[0] == "resumed at epoch 2" and rest["complete"] and rest["history"] == full["history"]
-
-
 def _cuda_available():
     import torch
     return torch.cuda.is_available()
+
+
+# The cuda case is the QuatE search notebook's preflight (experiments/kaggle_quate_search.py).
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(
+    not _cuda_available(), reason="needs a GPU"))])
+def test_quate_official_adagrad_resumes_exactly(data, tmp_path, device):
+    """The G2 QuatE setting (Adagrad, exact-filtered Bernoulli negatives) resumes like RotatE."""
+    from rtvm.baselines import train
+    cfg = small("quate_official", optimizer="adagrad", filtered_negatives=True, lr=0.1)
+    full = train(cfg, data, device=device, log=lambda *_: None)
+    ckpt = tmp_path / "q.ckpt"
+    part = train(cfg, data, device=device, checkpoint=ckpt, log=lambda *_: None, deadline=time.time() - 1)
+    assert not part["complete"] and part["epochs_run"] == 2
+    msgs = []
+    rest = train(cfg, data, device=device, checkpoint=ckpt, log=msgs.append)
+    assert msgs[0] == "resumed at epoch 2" and rest["complete"]
+    if device == "cpu":
+        assert rest["history"] == full["history"]             # resumed run matches the uninterrupted one
+    else:                                                      # CUDA scatter-add backward is not bitwise deterministic
+        assert [h["epoch"] for h in rest["history"]] == [h["epoch"] for h in full["history"]]
 
 
 # The cuda case skips on a CPU machine; the Kaggle notebook runs it as a preflight before the search

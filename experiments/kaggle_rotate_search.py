@@ -34,7 +34,7 @@ def sh(c):
 sh("git clone -q https://github.com/Bhaskar-Bahukhandi/Research /tmp/repo && git -C /tmp/repo checkout -q COMMIT && git -C /tmp/repo log --oneline -1")
 sh("pip install -q pykeen==1.11.1 2>&1 | tail -2; nvidia-smi -L")
 pf = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_g2search.py",
-                     "-k", "resume and cuda", "-rs"], cwd="/tmp/repo", capture_output=True, text=True)
+                     "-k", "baseline_resume_and_deadline and cuda", "-rs"], cwd="/tmp/repo", capture_output=True, text=True)
 print("preflight:", (pf.stdout + pf.stderr)[-1500:], flush=True)
 if pf.returncode != 0 or "1 passed" not in pf.stdout:      # a skip (no GPU visible) also stops the session
     raise SystemExit("preflight failed: cuda resume test; not starting the search")
