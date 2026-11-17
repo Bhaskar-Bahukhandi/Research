@@ -192,6 +192,27 @@ Each change keeps the original value visible.
 
     The 20 trials are drawn again from the new ranges with trial seed 0. No QuatE trial has been run, so nothing is discarded.
   - **Before the search:** a timing run of QuatE trial 0 on a Kaggle T4, as for the other models. Its run continues as part of the search.
+- **2026-11-17 (before the test freeze; the test split has not been used), what the primary CI measures, and a two-way bootstrap as secondary analysis S11.** Approved by me on 17 Nov 2026.
+  - **Evidence:** a reply to my question on Cross Validated (stats.stackexchange.com, 17 Nov 2026), which described the primary test but did not link this repository. The reply raised no flaw in the rule. It made two points:
+    - with the combiners fixed, the interval reflects only which relations land in the test set, which is fine if the paper says so;
+    - shared entities make relation clusters somewhat dependent, so an entity-level or two-way bootstrap is worth running as a sensitivity check.
+
+    No test-split data was read for this note. The number of relation clusters (at most 237) is not yet known.
+  - **Clarification, no change to the gate: what the primary CI measures.** It is the variation of Δ̄ over which relations appear in the test set, given the combiners fitted on V₂ and the three trained seeds. It does not include combiner-fitting variance or training variance. Seed variation is handled separately, by the requirement Δ_s > 0 in each seed. The paper states this wherever it reports the CI.
+  - **Change: new secondary analysis S11, a two-way (relation × entity) bootstrap** of the primary statistic on FB15k-237. This is the "pigeonhole" bootstrap for crossed random effects (Owen, 2007, *The Annals of Applied Statistics*).
+    - **Inputs:** the per-seed, per-positive differences of the primary test (the `diffs` of `rtvm.g2gate.primary_test`), unchanged, and each test positive's (h, r, t).
+    - **Entities:** those that occur as h or t among the test positives. A negative's replacement entity is not a cluster. Reason: a negative is defined relative to its positive, and the statistic is a mean over positives.
+    - **Each resample:**
+      - relation multiplicities w_r: the same draws as the primary bootstrap, `default_rng(0).integers(0, G, size=(10000, G))`;
+      - entity multiplicities v_e: drawn the same way from a separate generator, `default_rng(1).integers(0, E, size=(10000, E))`;
+      - each positive (h, r, t) gets weight w_r · v_h · v_t. If h = t, the weight is w_r · v_h², by the same product rule;
+      - for each seed, the weighted mean of that seed's per-positive differences; then the mean over the 3 seeds;
+      - a resample whose total weight is 0 is an error, not skipped.
+    - **Interval:** the 95% percentile interval (`numpy.percentile`, linear, at 2.5 and 97.5), as for the primary test.
+    - **It cannot change the gate.** The decision uses only the primary CI and the per-seed signs.
+    - **Reporting, fixed now:** both intervals are reported side by side. If the gate passes but S11's lower bound is below 0.005, the result is reported as "pass, not robust to entity dependence". If S11's interval is narrower than the primary one, that is reported too, and the primary interval is still the one used.
+    - **Code:** implemented and tested in `rtvm/g2gate.py`, and committed before the G2 test freeze commit, like the rest of the G2 scripts.
+  - **Unchanged:** the primary test, its bootstrap, threshold, decision rule and the four named outcomes, and S1–S10.
 
 ## G2 (H2) in full
 
@@ -292,6 +313,7 @@ The baseline below therefore includes all of these signals, so that holonomy is 
 8. **S8:** filtered MRR and Hits@1/10 for every model, for comparison with published results, including the holonomy model's single-triple score.
 9. **S9:** results with flagged fallback negatives excluded, and B₁ with the holonomy feature in quantile bins, to catch non-monotone effects.
 10. **S10:** the holonomy model with dense rotations (3.80M parameters, outside the 2.0M budget), with the primary test repeated and the size difference stated.
+11. **S11:** the primary statistic with a two-way (relation × entity) bootstrap, as defined in the note of 2026-11-17. It is reported next to the primary CI and cannot change the gate.
 
 ## Method choices fixed in advance
 

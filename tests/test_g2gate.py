@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,8 @@ import torch
 
 from rtvm.g2eval import grouped_auc, grouped_auc_rows
 from rtvm.g2gate import (B0, B1, STRUCTURE, decide, fit_combiner, null_rotations, primary_test,
-                         relation_bootstrap, rotation_table, structure_features, triple_holonomy)
+                         relation_bootstrap, rotation_table, s11_report, structure_features, triple_holonomy,
+                         two_way_bootstrap)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -137,6 +139,91 @@ def test_bootstrap_of_a_constant_gain_is_that_gain():
     assert np.allclose(boot, 0.02)
 
 
+# ---------------------------------------------------------------- S11: two-way bootstrap (note 2026-11-17)
+
+def slow_two_way(diffs, relations, heads, tails, n_boot, seed=0, entity_seed=1):
+    """Reference: build each resample as an explicit list, a positive repeated w_r * v_h * v_t times."""
+    rels, ents = np.unique(relations), np.unique(np.r_[heads, tails])
+    rel_draws = np.random.default_rng(seed).integers(0, len(rels), size=(n_boot, len(rels)))
+    ent_draws = np.random.default_rng(entity_seed).integers(0, len(ents), size=(n_boot, len(ents)))
+    out = []
+    for rd, ed in zip(rel_draws, ent_draws):
+        w = Counter(rels[rd].tolist())
+        v = Counter(ents[ed].tolist())
+        rows = [i for i in range(len(relations))
+                for _ in range(w[relations[i]] * v[heads[i]] * v[tails[i]])]
+        out.append(np.mean([d[rows].mean() for d in diffs]))
+    return np.array(out)
+
+
+def two_way_case(rng, n=50):
+    relations = rng.choice([2, 5, 9, 11], size=n)
+    heads, tails = rng.integers(0, 6, n), rng.integers(0, 6, n)
+    tails[:5] = heads[:5]                                       # h = t rows: weight w_r * v_h ** 2
+    return rng.normal(0.01, 0.05, size=(3, n)), relations, heads, tails
+
+
+def test_two_way_bootstrap_matches_explicit_resampling():
+    diffs, relations, heads, tails = two_way_case(np.random.default_rng(0))
+    fast = two_way_bootstrap(diffs, relations, heads, tails, n_boot=200, chunk=64)
+    assert np.allclose(fast, slow_two_way(diffs, relations, heads, tails, 200))
+
+
+def test_two_way_bootstrap_is_chunk_invariant():
+    diffs, relations, heads, tails = two_way_case(np.random.default_rng(1))
+    a = two_way_bootstrap(diffs, relations, heads, tails, n_boot=300, chunk=7)
+    b = two_way_bootstrap(diffs, relations, heads, tails, n_boot=300, chunk=300)
+    assert np.allclose(a, b, rtol=1e-12, atol=0)
+
+
+def test_chunked_entity_draws_equal_the_single_call_in_the_note():
+    """The note fixes default_rng(1).integers(0, E, size=(10_000, E)); the code draws it in row chunks."""
+    for E in (3, 7, 1001):
+        whole = np.random.default_rng(1).integers(0, E, size=(40, E))
+        g = np.random.default_rng(1)
+        parts = np.concatenate([g.integers(0, E, size=(rows, E)) for rows in (1, 6, 7, 26)])
+        assert np.array_equal(whole, parts)
+
+
+def test_two_way_with_one_entity_is_the_relation_bootstrap():
+    """With a single entity every v is 1, so S11 reduces to the primary bootstrap: same relation draws."""
+    rng = np.random.default_rng(2)
+    relations = rng.choice([3, 7, 8, 20, 21], size=60)
+    diffs = rng.normal(0.01, 0.05, size=(3, 60))
+    one = np.zeros(60, dtype=int)
+    assert np.allclose(two_way_bootstrap(diffs, relations, one, one, n_boot=300),
+                       relation_bootstrap(diffs, relations, n_boot=300))
+
+
+def test_two_way_of_a_constant_gain_is_that_gain():
+    rng = np.random.default_rng(3)
+    boot = two_way_bootstrap(np.full((3, 40), 0.02), np.arange(40) % 4, rng.integers(0, 20, 40),
+                             rng.integers(0, 20, 40), n_boot=200)
+    assert np.allclose(boot, 0.02)
+
+
+def test_two_way_zero_weight_resample_is_an_error():
+    # one positive with h != t among two entities: about half the resamples miss h or t
+    with pytest.raises(ValueError, match="total weight 0"):
+        two_way_bootstrap(np.full((3, 1), 0.02), np.array([0]), np.array([0]), np.array([1]), n_boot=50)
+
+
+def test_two_way_rejects_mismatched_inputs():
+    with pytest.raises(ValueError):
+        two_way_bootstrap(np.zeros((3, 4)), np.zeros(4), np.zeros(3), np.zeros(4))
+
+
+@pytest.mark.parametrize("decision, lo, expected", [
+    ("pass", 0.006, "pass"),
+    ("pass", 0.005, "pass"),
+    ("pass", 0.004, "pass, not robust to entity dependence"),
+    ("negligible", -0.01, "negligible"),
+    ("fail: no added information", -0.02, "fail: no added information"),
+])
+def test_s11_report(decision, lo, expected):
+    assert s11_report(decision, lo) == expected
+
+
 @pytest.mark.parametrize("deltas, lo, hi, expected", [
     ([0.01, 0.02, 0.01], 0.006, 0.03, "pass"),
     ([0.01, 0.02, 0.01], 0.005, 0.03, "pass"),                  # lower bound >= 0.005
@@ -177,6 +264,40 @@ def test_primary_test_end_to_end(informative, expected):
     assert len(res["seeds"][0]["B0"]["combiner"]["coef"]) == len(B0)
     assert len(res["seeds"][0]["B1"]["combiner"]["coef"]) == len(B1)
     assert res["n_clusters"] == 25 and res["n_positives"] == 1500
+    assert "s11" not in res
+
+
+def test_primary_test_with_s11_keeps_the_decision():
+    rng = np.random.default_rng(0)
+    v2, test = synthetic_split(rng, 1500, 10, True), synthetic_split(rng, 1500, 10, True)
+    test["triples"] = np.c_[rng.integers(0, 300, 1500), test["relations"], rng.integers(0, 300, 1500)]
+    plain = primary_test(v2, test, n_boot=500)
+    both = primary_test(v2, test, n_boot=500, two_way=True)
+    assert {k: v for k, v in both.items() if k != "s11"} == plain
+    lo, hi = both["s11"]["ci95"]
+    assert lo <= both["delta_bar"] <= hi
+    assert both["s11"]["report"] == s11_report(both["decision"], lo)
+    assert both["s11"]["n_entities"] == len(np.unique(test["triples"][:, [0, 2]]))
+    assert both["s11"]["narrower_than_primary"] == (hi - lo < both["ci95"][1] - both["ci95"][0])
+    test["triples"] = test["triples"][:, [1, 0, 2]]             # relations in the wrong column
+    with pytest.raises(ValueError, match="disagree"):
+        primary_test(v2, test, n_boot=50, two_way=True)
+
+
+def test_an_s11_error_leaves_the_primary_result_intact():
+    """A zero-weight resample is an S11 error (note 2026-11-17); it must not stop gate.json being written."""
+    rng = np.random.default_rng(0)
+    v2, test = synthetic_split(rng, 1500, 10, True), synthetic_split(rng, 1500, 10, True)
+    test["triples"] = np.c_[np.zeros(1500, int), test["relations"], np.ones(1500, int)]   # every h = 0, t = 1
+    plain = primary_test(v2, test, n_boot=200)
+    res = primary_test(v2, test, n_boot=200, two_way=True)
+    assert {k: v for k, v in res.items() if k != "s11"} == plain
+    assert "total weight 0" in res["s11"]["error"] and res["s11"]["report"] == res["decision"]
+    assert "ci95" not in res["s11"]
+
+
+def test_s11_runs_on_the_primary_dataset_only():
+    assert _gate_script().S11_DATASETS == ("fb15k237",)
 
 
 # ---------------------------------------------------------------- test-split guard

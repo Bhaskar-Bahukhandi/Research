@@ -56,6 +56,7 @@ FROZEN_PATHS = ["rtvm", "experiments/g2_build_data.py", "experiments/g2_gate.py"
                 "configs", "saved/g2"]
 SPLITS = ("v2", "test")
 SEEDS = (0, 1, 2)
+S11_DATASETS = ("fb15k237",)            # S11 is defined on the primary dataset only (note 2026-11-17)
 MODEL_CONFIG = {"rotate": "rotate", "holonomy": "holonomy"}     # gate model name -> rtvm.g2search.CONFIGS key
 
 
@@ -206,6 +207,7 @@ def structure_and_null(d: dict, device: str) -> dict:
         for key, value in f.items():
             out[f"{part}/{key}"] = value if part == "pos" else value.reshape(m, k)
     out["relations"] = d["pos"][:, 1]
+    out["triples"] = d["pos"]                      # (h, r, t) of the positives, for S11 (note 2026-11-17)
     out["fallback"] = d["fallback"]
     return out
 
@@ -275,7 +277,7 @@ def assemble(out_dir: Path, split: str, models=("rotate", "holonomy"), stand_in:
     stand_in replaces a model's files with given arrays (smoke test only)."""
     S = np.load(out_dir / f"{split}_structure.npz")
     feats = {"pos": {k: S[f"pos/{k}"] for k in STRUCTURE}, "neg": {k: S[f"neg/{k}"] for k in STRUCTURE},
-             "relations": S["relations"], "sources": {},
+             "relations": S["relations"], "triples": S["triples"], "sources": {},
              "provenance": {f"{split}_structure.npz": json.loads(str(S["provenance"]))}}
     for model in models:
         for s in SEEDS:
@@ -294,7 +296,7 @@ def assemble(out_dir: Path, split: str, models=("rotate", "holonomy"), stand_in:
 
 def subset(split: dict, rows: np.ndarray) -> dict:
     return dict(pos={k: v[rows] for k, v in split["pos"].items()}, neg={k: v[rows] for k, v in split["neg"].items()},
-                relations=split["relations"][rows], sources=split["sources"])
+                relations=split["relations"][rows], triples=split["triples"][rows], sources=split["sources"])
 
 
 def write_json(path: Path, obj) -> None:
@@ -350,7 +352,7 @@ def main() -> None:
         split = assemble(out_dir, "v2", models=("rotate", "holonomy"), stand_in=noise)
         perm = np.random.default_rng(0).permutation(m)
         fit_rows, eval_rows = np.sort(perm[: m // 2]), np.sort(perm[m // 2:])
-        res = primary_test(subset(split, fit_rows), subset(split, eval_rows))
+        res = primary_test(subset(split, fit_rows), subset(split, eval_rows), two_way=args.dataset in S11_DATASETS)
         res.update(kind="smoke: V2 halves, Gaussian noise as the holonomy feature; not a G2 result",
                    expected="the CI contains 0", sources=split["sources"], provenance=split["provenance"])
         write_json(out_dir / "smoke.json", res)
@@ -370,7 +372,7 @@ def main() -> None:
     for key in v2["sources"]:
         if v2["sources"][key] != test["sources"][key]:
             sys.exit(f"{key}: V2 and test features came from different model runs")
-    res = primary_test(v2, test)
+    res = primary_test(v2, test, two_way=args.dataset in S11_DATASETS)
     res.update(dataset=args.dataset, freeze_commit=freeze, head=state["head"], frozen_tree=state["frozen_tree"],
                manifest_sha256=manifests.pop(), features=list(B1), sources=test["sources"],
                provenance={**v2["provenance"], **test["provenance"]}, versions=versions(),
@@ -378,6 +380,13 @@ def main() -> None:
     write_json(gate_file, res)
     print(f"{args.dataset}: delta per seed {[round(res['seeds'][s]['delta'], 5) for s in SEEDS]}, delta-bar "
           f"{res['delta_bar']:+.5f}, 95% CI {res['ci95'][0]:+.5f} .. {res['ci95'][1]:+.5f} -> {res['decision']}")
+    s11 = res.get("s11")
+    if s11 and "error" in s11:
+        print(f"S11 failed: {s11['error']} (the primary result above stands)")
+    elif s11:
+        print(f"S11 two-way CI {s11['ci95'][0]:+.5f} .. {s11['ci95'][1]:+.5f} ({s11['n_entities']} entities"
+              f"{', narrower than the primary CI' if s11['narrower_than_primary'] else ''}) "
+              f"-> reported as: {s11['report']}")
 
 
 if __name__ == "__main__":

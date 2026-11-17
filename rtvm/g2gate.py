@@ -28,6 +28,14 @@ protocol leaves open:
   * Decision: the protocol's four outcomes. One case is not named there: CI lower bound
     >= 0.005 while Delta_s <= 0 in some seed. It is not a pass, and is reported as
     "not pass: not positive in every seed".
+  * S11 (protocol note 2026-11-17), reported next to the primary CI and never used by the
+    decision: a two-way (relation x entity, "pigeonhole") bootstrap of the same per-positive
+    differences. Relation multiplicities are the primary bootstrap's draws; entity multiplicities
+    come from numpy.random.default_rng(1).integers(0, E, size=(10_000, E)), over the entities
+    that occur as h or t among the test positives (sorted). A positive (h, r, t) has weight
+    w_r * v_h * v_t (v_h ** 2 when h = t); Delta_s is the weighted mean of seed s's differences
+    and Delta-bar the mean over seeds. The entity draws are made in row chunks to bound memory;
+    tests/test_g2gate.py checks that this gives the same draws as the single call.
 """
 from __future__ import annotations
 
@@ -48,6 +56,7 @@ B1 = B0 + ("holonomy",)
 MIN_EFFECT = 0.005
 N_BOOT = 10_000
 BOOT_SEED = 0
+ENTITY_SEED = 1                 # S11 only (protocol note 2026-11-17)
 NULL_SEED = 0
 N_BLOCKS, BLOCK = 2, 64
 
@@ -200,6 +209,53 @@ def relation_bootstrap(diffs: np.ndarray, relations: np.ndarray, n_boot: int = N
     return per_seed.mean(axis=1)
 
 
+def _row_counts(draws: np.ndarray, size: int) -> np.ndarray:
+    """counts[b, g]: how often row b of draws (b, k) contains g, for g < size."""
+    b = len(draws)
+    flat = (draws + np.arange(b)[:, None] * size).ravel()
+    return np.bincount(flat, minlength=b * size).reshape(b, size).astype(float)
+
+
+def two_way_bootstrap(diffs: np.ndarray, relations: np.ndarray, heads: np.ndarray, tails: np.ndarray,
+                      n_boot: int = N_BOOT, seed: int = BOOT_SEED, entity_seed: int = ENTITY_SEED,
+                      chunk: int = 250) -> np.ndarray:
+    """S11: Delta-bar in each of n_boot relation x entity resamples (see the module docstring).
+
+    diffs (S, n) as for relation_bootstrap; relations, heads, tails (n,) of the test positives.
+    """
+    diffs = np.atleast_2d(np.asarray(diffs, float))
+    n = diffs.shape[1]
+    if not len(relations) == len(heads) == len(tails) == n:
+        raise ValueError("diffs, relations, heads and tails must describe the same positives")
+    _, rel = np.unique(np.asarray(relations), return_inverse=True)
+    rel = rel.reshape(-1)
+    G = int(rel.max()) + 1
+    _, ent = np.unique(np.concatenate([np.asarray(heads), np.asarray(tails)]), return_inverse=True)
+    ent = ent.reshape(-1)
+    h, t = ent[:n], ent[n:]
+    E = int(ent.max()) + 1
+    rel_draws = np.random.default_rng(seed).integers(0, G, size=(n_boot, G))     # the primary bootstrap's draws
+    ent_rng = np.random.default_rng(entity_seed)
+    out = np.empty(n_boot)
+    for start in range(0, n_boot, chunk):
+        stop = min(start + chunk, n_boot)
+        w = _row_counts(rel_draws[start:stop], G)                                  # (b, G)
+        v = _row_counts(ent_rng.integers(0, E, size=(stop - start, E)), E)         # (b, E)
+        weight = w[:, rel] * v[:, h] * v[:, t]                                     # (b, n)
+        total = weight.sum(axis=1)
+        if np.any(total == 0):
+            raise ValueError("a two-way resample has total weight 0 (protocol note 2026-11-17: an error)")
+        out[start:stop] = ((weight @ diffs.T) / total[:, None]).mean(axis=1)
+    return out
+
+
+def s11_report(decision: str, ci_low: float, min_effect: float = MIN_EFFECT) -> str:
+    """How the gate is reported next to S11 (protocol note 2026-11-17). Never changes the decision."""
+    if decision == "pass" and ci_low < min_effect:
+        return "pass, not robust to entity dependence"
+    return decision
+
+
 def decide(delta_per_seed, ci_low: float, ci_high: float, min_effect: float = MIN_EFFECT) -> str:
     """Protocol "Decision", in its order; plus the one case it does not name (module docstring)."""
     every_seed = all(d > 0 for d in delta_per_seed)
@@ -214,19 +270,24 @@ def decide(delta_per_seed, ci_low: float, ci_high: float, min_effect: float = MI
     return "not pass: not positive in every seed"
 
 
-def primary_test(v2: dict, test: dict, seeds=(0, 1, 2), n_boot: int = N_BOOT) -> dict:
+def primary_test(v2: dict, test: dict, seeds=(0, 1, 2), n_boot: int = N_BOOT, two_way: bool = False) -> dict:
     """Fit B0 and B1 on V2 per seed, score the test split, bootstrap, decide.
 
     v2 and test: dict(pos=features of the positives, neg=features of their negatives,
     relations=(n,) the positives' relations), where a features entry maps each name in B1
     to an array: (n,) for positives and (n, k) for negatives. Model features are keyed per
-    seed as "rotate:<s>" and "holonomy:<s>".
+    seed as "rotate:<s>" and "holonomy:<s>". two_way=True adds S11 under "s11"; it needs
+    test["triples"] (n, 3), the positives as (h, r, t), and does not affect "decision".
     """
     def matrices(split, part, s, names):
         cols = {**{k: split[part][k] for k in STRUCTURE},
                 "rotate": split[part][f"rotate:{s}"], "holonomy": split[part][f"holonomy:{s}"]}
         return feature_matrix(cols, names)
 
+    if two_way:                                         # checked first, so a bad input stops before any result
+        triples = np.asarray(test["triples"])
+        if not np.array_equal(triples[:, 1], test["relations"]):
+            raise ValueError("test triples and relations disagree")
     out, diffs = dict(seeds={}), []
     for s in seeds:
         res, auc_rows = {}, {}
@@ -246,4 +307,16 @@ def primary_test(v2: dict, test: dict, seeds=(0, 1, 2), n_boot: int = N_BOOT) ->
     out.update(delta_bar=float(np.mean(deltas)), ci95=[float(lo), float(hi)], n_boot=n_boot,
                n_clusters=int(len(np.unique(test["relations"]))), n_positives=int(len(test["relations"])),
                decision=decide(deltas, lo, hi))
+    if two_way:
+        s11 = dict(kind="S11, two-way (relation x entity) bootstrap; reported, never decides (note 2026-11-17)",
+                   n_entities=int(len(np.unique(triples[:, [0, 2]]))))
+        try:
+            boot2 = two_way_bootstrap(np.stack(diffs), triples[:, 1], triples[:, 0], triples[:, 2], n_boot=n_boot)
+        except ValueError as e:                         # an S11 error is reported; the primary result still stands
+            s11.update(error=str(e), report=out["decision"])
+        else:
+            lo2, hi2 = (float(x) for x in np.percentile(boot2, [2.5, 97.5]))
+            s11.update(ci95=[lo2, hi2], narrower_than_primary=bool(hi2 - lo2 < hi - lo),
+                       report=s11_report(out["decision"], lo2))
+        out["s11"] = s11
     return out
