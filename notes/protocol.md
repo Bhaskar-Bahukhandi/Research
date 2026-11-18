@@ -213,6 +213,30 @@ Each change keeps the original value visible.
     - **Reporting, fixed now:** both intervals are reported side by side. If the gate passes but S11's lower bound is below 0.005, the result is reported as "pass, not robust to entity dependence". If S11's interval is narrower than the primary one, that is reported too, and the primary interval is still the one used.
     - **Code:** implemented and tested in `rtvm/g2gate.py`, and committed before the G2 test freeze commit, like the rest of the G2 scripts.
   - **Unchanged:** the primary test, its bootstrap, threshold, decision rule and the four named outcomes, and S1–S10.
+- **2026-11-18 (before the test freeze; the test split has not been used), S11's reporting label states that S11 is conservative; further replies recorded.** Approved by me on 18 Nov 2026.
+  - **Evidence:**
+    - **Owen (2007), "The pigeonhole bootstrap", *Annals of Applied Statistics* 1(2): 386–411, read in full (arXiv 0712.1111).** For a mean over a two-factor crossed design, the true variance is about (ν_A σ²_A + ν_B σ²_B + σ²_E)/N. The pigeonhole bootstrap's expected variance is about ((ν_A + 2) σ²_A + (ν_B + 2) σ²_B + 3 σ²_E)/N.
+      - ν is the average number of observations sharing a level, and σ²_E is the observation-specific variance.
+      - The paper calls it "mildly conservative" when each ν ≫ 2 and σ²_E does not dominate.
+    - **What this means for S11:**
+      - S11 resamples three slots (relation, head entity, tail entity), not two. The three-slot case was not derived here; the direction (too wide, not too narrow) is assumed to carry over.
+      - Per-positive AUC differences may well have a large triple-specific component. That is the term the pigeonhole bootstrap overstates most (×3 in the two-factor case), so here S11 may be more than mildly conservative.
+      - A wider S11 interval therefore need not mean entity dependence. The label fixed on 2026-11-17 would attribute it to entity dependence.
+    - **Four further replies on Cross Validated, 18 Nov 2026:**
+      - two agreed with the primary relation bootstrap;
+      - one preferred a multiway bootstrap as the primary test;
+      - one said an interval needs a stated target population.
+  - **Change: S11's label.** "pass, not robust to entity dependence" becomes **"pass; not robust under the conservative two-way bootstrap (S11)"**.
+    - The condition is unchanged: the gate passes and S11's 95% lower bound is below 0.005.
+    - The paper describes S11 as a conservative check on the interval's width, citing Owen (2007), and does not read a wider S11 interval as evidence of entity dependence by itself.
+    - The S11 entry in the list of secondary analyses refers to this note as well as to the note of 2026-11-17.
+  - **Considered and not adopted:**
+    - **Owen's correction**, subtracting twice the naive-bootstrap variance. It gives a variance, not an interval, and the paper notes it can be negative.
+    - **A multiway bootstrap as the primary test.** S11 already reports it, and changing the gate because of one reviewer's preference among reasonable choices is what pre-registration exists to prevent.
+    - **A BCa interval as an extra check.** It is second-order accurate, but with about 200 relation clusters and a paired difference it is expected to differ little from the percentile interval, and it would add one more interval to reconcile.
+  - **Write-up, no change to the protocol:** the primary CI generalises over relations drawn from a population like FB15k-237's, with the fitted models held fixed (see also the note of 2026-11-17).
+  - **Code:** `rtvm.g2gate.s11_report` returns the new label; its test changes with it.
+  - **Unchanged:** the primary test and its decision, S11's computation and its condition, and S1–S10.
 
 ## G2 (H2) in full
 
@@ -313,7 +337,7 @@ The baseline below therefore includes all of these signals, so that holonomy is 
 8. **S8:** filtered MRR and Hits@1/10 for every model, for comparison with published results, including the holonomy model's single-triple score.
 9. **S9:** results with flagged fallback negatives excluded, and B₁ with the holonomy feature in quantile bins, to catch non-monotone effects.
 10. **S10:** the holonomy model with dense rotations (3.80M parameters, outside the 2.0M budget), with the primary test repeated and the size difference stated.
-11. **S11:** the primary statistic with a two-way (relation × entity) bootstrap, as defined in the note of 2026-11-17. It is reported next to the primary CI and cannot change the gate.
+11. **S11:** the primary statistic with a two-way (relation × entity) bootstrap, as defined in the notes of 2026-11-17 and 2026-11-18. It is conservative, is reported next to the primary CI and cannot change the gate.
 
 ## Method choices fixed in advance
 

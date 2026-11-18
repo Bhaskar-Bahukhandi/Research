@@ -28,8 +28,9 @@ protocol leaves open:
   * Decision: the protocol's four outcomes. One case is not named there: CI lower bound
     >= 0.005 while Delta_s <= 0 in some seed. It is not a pass, and is reported as
     "not pass: not positive in every seed".
-  * S11 (protocol note 2026-11-17), reported next to the primary CI and never used by the
-    decision: a two-way (relation x entity, "pigeonhole") bootstrap of the same per-positive
+  * S11 (protocol notes 2026-11-17 and 2026-11-18; conservative by design, Owen 2007), reported
+    next to the primary CI and never used by the decision: a two-way (relation x entity,
+    "pigeonhole") bootstrap of the same per-positive
     differences. Relation multiplicities are the primary bootstrap's draws; entity multiplicities
     come from numpy.random.default_rng(1).integers(0, E, size=(10_000, E)), over the entities
     that occur as h or t among the test positives (sorted). A positive (h, r, t) has weight
@@ -250,9 +251,10 @@ def two_way_bootstrap(diffs: np.ndarray, relations: np.ndarray, heads: np.ndarra
 
 
 def s11_report(decision: str, ci_low: float, min_effect: float = MIN_EFFECT) -> str:
-    """How the gate is reported next to S11 (protocol note 2026-11-17). Never changes the decision."""
+    """How the gate is reported next to S11 (protocol notes 2026-11-17 and 2026-11-18; S11 is
+    conservative, Owen 2007). Never changes the decision."""
     if decision == "pass" and ci_low < min_effect:
-        return "pass, not robust to entity dependence"
+        return "pass; not robust under the conservative two-way bootstrap (S11)"
     return decision
 
 
@@ -308,7 +310,8 @@ def primary_test(v2: dict, test: dict, seeds=(0, 1, 2), n_boot: int = N_BOOT, tw
                n_clusters=int(len(np.unique(test["relations"]))), n_positives=int(len(test["relations"])),
                decision=decide(deltas, lo, hi))
     if two_way:
-        s11 = dict(kind="S11, two-way (relation x entity) bootstrap; reported, never decides (note 2026-11-17)",
+        s11 = dict(kind="S11, conservative two-way (relation x entity) bootstrap; reported, never decides "
+                        "(notes 2026-11-17, 2026-11-18)",
                    n_entities=int(len(np.unique(triples[:, [0, 2]]))))
         try:
             boot2 = two_way_bootstrap(np.stack(diffs), triples[:, 1], triples[:, 0], triples[:, 2], n_boot=n_boot)

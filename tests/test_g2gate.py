@@ -216,7 +216,7 @@ def test_two_way_rejects_mismatched_inputs():
 @pytest.mark.parametrize("decision, lo, expected", [
     ("pass", 0.006, "pass"),
     ("pass", 0.005, "pass"),
-    ("pass", 0.004, "pass, not robust to entity dependence"),
+    ("pass", 0.004, "pass; not robust under the conservative two-way bootstrap (S11)"),   # note 2026-11-18
     ("negligible", -0.01, "negligible"),
     ("fail: no added information", -0.02, "fail: no added information"),
 ])
