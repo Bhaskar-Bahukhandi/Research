@@ -238,7 +238,7 @@ Each change keeps the original value visible.
   - **Code:** `rtvm.g2gate.s11_report` returns the new label; its test changes with it.
   - **Unchanged:** the primary test and its decision, S11's computation and its condition, and S1–S10.
 - **2026-11-21 (the test split has not been used), the G2 test freeze.** Approved by me on 21 Nov 2026.
-  - G2 test freeze: commit 7210e1e3744d181d2a21aca21fbc1875b72296ed
+  - Superseded by the second note of 2026-11-21. The original line read: `G2 test freeze: commit 7210e1e3744d181d2a21aca21fbc1875b72296ed`.
   - **What this fixes:** at that commit, `rtvm/`, `configs/`, `saved/g2/`, `experiments/g2_build_data.py`, `experiments/g2_gate.py` and `experiments/g2_search.py`, the paths `experiments/g2_gate.py` checks. The commit that adds this note changes only this file.
   - **Searches finished.** Every run carries the committed config's hash and ran on Kaggle T4s.
     - **RotatE** (code `c5c44e2`, `71bf0a7`, `3c5ba66`): FB15k-237 best trial 17, V₁ 0.8801; seeds 1 and 2: 0.8764, 0.8815.
@@ -262,6 +262,33 @@ Each change keeps the original value visible.
     2. `g2_gate.py decide --dataset fb15k237`, once;
     3. the secondary analyses.
   - **Unchanged:** everything in the protocol.
+- **2026-11-21, second note (the test split has not been used): two bugs in the gate script's git helper; the freeze moves to the fix.** Approved by me on 21 Nov 2026.
+  - G2 test freeze: commit e7ee64237012457f79499832ea3d12d4141c1ea2
+  - **What happened.** After the first note was committed (`e4c5626`), the V₂ features were recomputed. `g2_gate.py features --split test` then stopped at its manifest check, before any test data was loaded. No test feature file and no `gate.json` were written.
+  - **Bug 1, the manifest check.**
+    - `git()` strips its output, so the committed manifest lost its final newline.
+    - The manifest on disk ends with one, so the byte comparison could never succeed, on any platform.
+    - The contents were otherwise identical.
+  - **Bug 2, decoding.**
+    - `git()` decoded git's output with the locale's encoding.
+    - On Windows that is cp1252, which cannot decode this file. The first guard check failed this way, and was then run with `python -X utf8`.
+  - **Fix** (`experiments/g2_gate.py`, commit `e7ee642`):
+    - `git()` decodes UTF-8 whatever the locale;
+    - committed files are read unstripped (`committed_file`);
+    - the manifest comparison is the function `check_manifest`, unchanged in what it compares.
+
+    Nothing in the features, combiners, bootstrap, S11 or the decision changes.
+  - **Tests:**
+    - The scratch-repository guard test now uses a UTF-8 protocol.
+    - A new test reads a committed manifest through `git show` and checks that the check accepts it, also with CRLF line endings, and rejects a changed manifest, including one with a missing or extra final newline.
+    - Both tests fail on the code of `7210e1e`; the full suite passes (225 passed, 3 skipped).
+  - **A dry run of `decide`, which disclosed a V₂ result.** To find any further bug before freezing again, `decide` was run end to end outside `runs/g2gate/`, with the guard stubbed and the V₂ feature files copied in as stand-ins for the test files. It wrote a complete `gate.json`, including S11.
+    - Because V₂ served as both the fitting and the evaluation set, the run printed an in-sample V₂ result: Δ̄ −0.00002, 95% CI −0.00016 to +0.00010 (S11: −0.00031 to +0.00022).
+    - This is not the G2 result: the gate is evaluated on the test split only.
+    - It was seen after every choice had been fixed, and nothing is changed because of it. It is recorded here so that it is not hidden.
+  - **Freeze:** the line above replaces the one in the first note of 2026-11-21, which is kept visible but no longer read as a freeze line. `e7ee642` differs from `7210e1e` only in `experiments/g2_gate.py` and its tests. The data verification and the run checks of the first note still apply: the build code, the configs, `saved/g2/` and the training code are unchanged.
+  - **Next:** recompute the V₂ features with the fixed code, then compute the test features and run `decide` once.
+  - **Unchanged:** everything else in the protocol.
 
 ## G2 (H2) in full
 
