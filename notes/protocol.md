@@ -311,6 +311,48 @@ Each change keeps the original value visible.
     - The failed gate is reported and not re-run.
     - The secondary analyses S1–S11 are still run and reported, and cannot change the decision.
   - **Unchanged:** everything in the protocol.
+- **2026-11-22, second note (no secondary result exists yet): how S2, S3, S6, S7 and S9 are computed, and two analyses added to explain the null.** Approved by me on 22 Nov 2026.
+  - **Why now:** these analyses decide what the paper may say about the failed gate. Their remaining choices are fixed here, before any of them is computed on any split.
+  - **Shared rules:**
+    - **Code:** lives outside the frozen paths, in `experiments/g2_secondary.py`. It imports the frozen gate code unchanged, so the test-split guard of `experiments/g2_gate.py` keeps holding. Outputs go to `runs/g2secondary/`.
+    - **Inputs:** the gate's V₂ and test feature files, models and seed pairing, unless stated. Combiners are fitted on V₂ exactly as in the primary test.
+    - **Intervals:** the primary relation bootstrap (10,000 resamples, `default_rng(0)`, percentile 95%) unless stated.
+    - **Reporting:** each analysis reports its Δ per seed, Δ̄ and CI; none of them has a pass rule. FB15k-237 only, unless stated.
+  - **S2:**
+    - **(a) Covered subset:** covered positives, each compared against its covered negatives; a positive with no covered negative is skipped. The combiners are those of the primary test, not refitted. The counts of positives and negatives used are reported.
+    - **(b) Pooled AUC on the full set:** the ROC AUC over all test positives and negatives per combiner and seed, with ties counting ½. Its CI uses the first 1,000 rows of the primary resample matrix, because each resample needs a full AUC.
+  - **S7, FB15k-237 part:**
+    - Per relation, Δ̄ (the mean over seeds of B₁'s minus B₀'s grouped AUC over that relation's positives), with its number of positives.
+    - **Summary:** the counts of relations with Δ̄ > 0, < 0 and = 0, and a table of the relations with at least 100 test positives.
+    - No per-relation intervals: with 224 relations they would mostly reflect multiplicity.
+    - The WN18RR part (reverse in training against the rest) waits for S1.
+  - **S9:**
+    - **(a) Fallback excluded:** grouped AUC with flagged fallback negatives removed; a positive left with no negative is skipped.
+    - **(b) Binned holonomy:** B₁ with the holonomy feature replaced by decile indicators.
+      - The bin edges are the deciles of the holonomy values of covered V₂ rows, positives and negatives together, so no labels are used.
+      - A covered row gets one of 10 indicators, and an uncovered row gets none. The lowest decile is the reference: 9 columns, because the covered flag is already in B₀.
+      - Reported: Δ̄ and CI against B₀, and the fitted coefficients by decile, which show any non-monotone effect.
+  - **S3, typed path rules,** as specified in the secondary-analysis list, with these choices:
+    - **Estimation set:** for each relation in id order, up to 300 training triples drawn uniformly without replacement, with one generator `default_rng(0)`.
+    - **Their negatives:** 5 head and 5 tail replacements with the protocol's sampler and fallback. They are filtered against **training triples only**, so that no validation or test label shapes a rule's confidence.
+    - **Their paths:** the protocol's sampler (L ≤ 3, K = 32, length tiers, `default_rng([0, i])` per row), with the own edge excluded for the positives.
+    - **Pattern:** a path's sequence of (relation, direction) steps from h to t.
+    - **Confidence of (r, p):** among r's estimation triples whose sampled paths contain p, the fraction that are positives. It is defined only when at least 5 such triples exist; otherwise p is unrated for r.
+    - **Rule features of a triple:** the maximum and the mean confidence over the distinct rated patterns on its sampled paths, plus a flag "rated". All three are 0 when no pattern is rated. The flag is needed because a covered triple can have no rated pattern, which the covered flag cannot express.
+    - **Tests:**
+      - (i) As pre-registered: B₀′ = B₀ + rule features, against B₁′ = B₀′ + holonomy.
+      - (ii) **Added now:** B₀′ against B₀. This asks whether typed rules add information beyond RotatE + structure. If they do not, FB15k-237 may hold no path-rule signal beyond those features for holonomy to find, and the paper says so. If they do, holonomy failed where an explicit rule feature succeeds.
+  - **S6, holonomy from the baselines' own rotations,** on the same saved paths, with the same transport rules (Rᵀ for reversed steps) and the same score: the mean of ‖H_c − I‖_F, 0 when uncovered.
+    - **RotatE:** each relation's phases θ = r·π/range become 2 × 2 rotation blocks, oriented as the score's h·e^{iθ}. Seed s uses RotatE run s.
+    - **QuatE:** each relation's normalised quaternion per coordinate becomes the 4 × 4 orthogonal matrix of right multiplication, h ↦ h ⊗ r̂, which is the action in the official score. Seed s uses QuatE run s. Its checkpoints are downloaded from the QuatE search's Kaggle output first.
+    - **Tests:** B₀ against B₀ + each of these holonomy features. The holonomy model's own result (the gate) sits beside them in one table.
+    - **Interpretation, fixed now:** a gain from RotatE's commutative rotations would point to the holonomy model's training rather than to holonomy. A gain from QuatE's rotations only would point to noncommutativity.
+  - **Collapse check, exploratory, not a secondary analysis.** For each dataset's best holonomy model: the distribution over relations of ‖U_r − I‖_F, against a fresh draw at the trained initial scale and the maximum for its rank.
+    - A first look, before this note: on FB15k-237 the trained median is 1.35 (at initial scale 0.54; rank-2 maximum about 5.7). On WN18RR it is 0.07 (at initial scale 2.1; rank-4 maximum about 8.0).
+    - So on WN18RR the rotations moved toward the identity. This is the risk the proposal lists as "rotations collapse to the identity".
+  - **Order:** S2, S7 and S9 first, because they reuse the gate's features. Then S6 with RotatE, S3, and S6 with QuatE.
+  - **Not covered here:** S1, S4, S5, S8 and S10 keep their specifications and follow later.
+  - **Unchanged:** the gate, its decision, and every other part of the protocol.
 
 ## G2 (H2) in full
 
