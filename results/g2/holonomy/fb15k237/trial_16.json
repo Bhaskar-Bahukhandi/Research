@@ -1,0 +1,103 @@
+{
+ "config": {
+  "rank": 4,
+  "lr": 0.0006252755809529839,
+  "rotation_init": 0.0188366954194813,
+  "entity_init": 1.0,
+  "gamma": 6.0,
+  "temperature": 0.5,
+  "alpha1": 0.013229155872682774,
+  "alpha2": 1.5704300142836236,
+  "margin": 2.650306364321488,
+  "num_negatives": 256,
+  "batch_size": 1024,
+  "cycles_per_triple": 8,
+  "eval_every": 10,
+  "patience": 5,
+  "max_epochs": 1000,
+  "tf32": true,
+  "seed": 0
+ },
+ "best_v1_auc": 0.5535369385161427,
+ "best_epoch": 20,
+ "epochs_run": 70,
+ "complete": true,
+ "epochs_this_process": 10,
+ "history": [
+  {
+   "epoch": 10,
+   "loss": 0.6421294147358801,
+   "v1_auc": 0.551469286119764,
+   "v1_triple_grouped_auc": 0.5401132882057786
+  },
+  {
+   "epoch": 20,
+   "loss": 0.5020838400026909,
+   "v1_auc": 0.5535369385161427,
+   "v1_triple_grouped_auc": 0.5407863740666013
+  },
+  {
+   "epoch": 30,
+   "loss": 0.3877292319123906,
+   "v1_auc": 0.5497280291152332,
+   "v1_triple_grouped_auc": 0.5402295700306379
+  },
+  {
+   "epoch": 40,
+   "loss": 0.3346273860985175,
+   "v1_auc": 0.5492058123139867,
+   "v1_triple_grouped_auc": 0.5411763191516895
+  },
+  {
+   "epoch": 50,
+   "loss": 0.3172209497009005,
+   "v1_auc": 0.5508859233038801,
+   "v1_triple_grouped_auc": 0.5393680729841598
+  },
+  {
+   "epoch": 60,
+   "loss": 0.3130487796283306,
+   "v1_auc": 0.5528191005437086,
+   "v1_triple_grouped_auc": 0.538744470689872
+  },
+  {
+   "epoch": 70,
+   "loss": 0.31254140181200846,
+   "v1_auc": 0.5497886613498472,
+   "v1_triple_grouped_auc": 0.5382133197367438
+  }
+ ],
+ "train_seconds": 399.57664823532104,
+ "device": "Tesla T4",
+ "tf32_training": true,
+ "evaluation": "strict FP32",
+ "deterministic_algorithms": true,
+ "versions": {
+  "torch": "2.11.0+cu130",
+  "cuda": "13.0",
+  "numpy": "2.1.3"
+ },
+ "data_provenance": {
+  "manifest_sha256": "ffe08ec30fd9a7a41906c28d42dc7f95102fdf40fca727f1205b5f4bfdde8151",
+  "data_code_commit": "70cf4a359822bd99633598f653ef014f9cbbf8f2"
+ },
+ "name": "trial_16",
+ "values": {
+  "rank": 4,
+  "lr": 0.0006252755809529839,
+  "rotation_init": 0.0188366954194813,
+  "gamma": 6.0,
+  "temperature": 0.5,
+  "alpha1": 0.013229155872682774,
+  "alpha2": 1.5704300142836236,
+  "margin": 2.650306364321488
+ },
+ "seed": 0,
+ "parameters": 2099328,
+ "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc",
+ "git": {
+  "commit": "9cac9a249543316aa1d88e7f58e8f7ccc6b4f91e",
+  "dirty": false
+ },
+ "finished": "2026-11-16 12:18:06"
+}

@@ -1,0 +1,97 @@
+{
+ "config": {
+  "rank": 4,
+  "lr": 0.0001101283376404202,
+  "rotation_init": 0.04312176239649306,
+  "entity_init": 1.0,
+  "gamma": 6.0,
+  "temperature": 0.5,
+  "alpha1": 1.8786808438546048,
+  "alpha2": 0.3453632875681428,
+  "margin": 3.7518647727895216,
+  "num_negatives": 256,
+  "batch_size": 1024,
+  "cycles_per_triple": 8,
+  "eval_every": 10,
+  "patience": 5,
+  "max_epochs": 1000,
+  "tf32": true,
+  "seed": 0
+ },
+ "best_v1_auc": 0.5603122178194235,
+ "best_epoch": 10,
+ "epochs_run": 60,
+ "complete": true,
+ "epochs_this_process": 60,
+ "history": [
+  {
+   "epoch": 10,
+   "loss": 1.7652761913779984,
+   "v1_auc": 0.5603122178194235,
+   "v1_triple_grouped_auc": 0.5730454674693394
+  },
+  {
+   "epoch": 20,
+   "loss": 1.2915516361258084,
+   "v1_auc": 0.5585060469221959,
+   "v1_triple_grouped_auc": 0.5722634813101573
+  },
+  {
+   "epoch": 30,
+   "loss": 1.2368455529212952,
+   "v1_auc": 0.5559897384332251,
+   "v1_triple_grouped_auc": 0.5721903950848146
+  },
+  {
+   "epoch": 40,
+   "loss": 1.2112152688485338,
+   "v1_auc": 0.55606766515971,
+   "v1_triple_grouped_auc": 0.5690537475372129
+  },
+  {
+   "epoch": 50,
+   "loss": 1.192491200633515,
+   "v1_auc": 0.5581587412890525,
+   "v1_triple_grouped_auc": 0.5694587290651707
+  },
+  {
+   "epoch": 60,
+   "loss": 1.1681692869143379,
+   "v1_auc": 0.5590550712116398,
+   "v1_triple_grouped_auc": 0.5716209695498362
+  }
+ ],
+ "train_seconds": 2434.211630821228,
+ "device": "Tesla T4",
+ "tf32_training": true,
+ "evaluation": "strict FP32",
+ "deterministic_algorithms": true,
+ "versions": {
+  "torch": "2.11.0+cu130",
+  "cuda": "13.0",
+  "numpy": "2.1.3"
+ },
+ "data_provenance": {
+  "manifest_sha256": "ffe08ec30fd9a7a41906c28d42dc7f95102fdf40fca727f1205b5f4bfdde8151",
+  "data_code_commit": "70cf4a359822bd99633598f653ef014f9cbbf8f2"
+ },
+ "name": "trial_17",
+ "values": {
+  "rank": 4,
+  "lr": 0.0001101283376404202,
+  "rotation_init": 0.04312176239649306,
+  "gamma": 6.0,
+  "temperature": 0.5,
+  "alpha1": 1.8786808438546048,
+  "alpha2": 0.3453632875681428,
+  "margin": 3.7518647727895216
+ },
+ "seed": 0,
+ "parameters": 2099328,
+ "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc",
+ "git": {
+  "commit": "9cac9a249543316aa1d88e7f58e8f7ccc6b4f91e",
+  "dirty": false
+ },
+ "finished": "2026-11-16 13:10:37"
+}

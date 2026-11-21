@@ -1,0 +1,103 @@
+{
+ "config": {
+  "rank": 2,
+  "lr": 0.001196160807496795,
+  "rotation_init": 0.008462588737105833,
+  "entity_init": 1.0,
+  "gamma": 3.0,
+  "temperature": 0.5,
+  "alpha1": 0.4210984673528851,
+  "alpha2": 0.079274894295021,
+  "margin": 1.9794052741918047,
+  "num_negatives": 256,
+  "batch_size": 1024,
+  "cycles_per_triple": 8,
+  "eval_every": 10,
+  "patience": 5,
+  "max_epochs": 1000,
+  "tf32": true,
+  "seed": 0
+ },
+ "best_v1_auc": 0.714981656071238,
+ "best_epoch": 20,
+ "epochs_run": 70,
+ "complete": true,
+ "epochs_this_process": 70,
+ "history": [
+  {
+   "epoch": 10,
+   "loss": 0.5886568679529078,
+   "v1_auc": 0.7107395132239216,
+   "v1_triple_grouped_auc": 0.6107142857142857
+  },
+  {
+   "epoch": 20,
+   "loss": 0.47277785153949964,
+   "v1_auc": 0.714981656071238,
+   "v1_triple_grouped_auc": 0.631547619047619
+  },
+  {
+   "epoch": 30,
+   "loss": 0.41355073732488296,
+   "v1_auc": 0.7135948085897446,
+   "v1_triple_grouped_auc": 0.6298469387755101
+  },
+  {
+   "epoch": 40,
+   "loss": 0.3748513502233169,
+   "v1_auc": 0.6842591238842128,
+   "v1_triple_grouped_auc": 0.5958333333333333
+  },
+  {
+   "epoch": 50,
+   "loss": 0.3474747370271122,
+   "v1_auc": 0.6964993654902812,
+   "v1_triple_grouped_auc": 0.6041241496598639
+  },
+  {
+   "epoch": 60,
+   "loss": 0.3281755990841809,
+   "v1_auc": 0.7045142460338354,
+   "v1_triple_grouped_auc": 0.6081632653061224
+  },
+  {
+   "epoch": 70,
+   "loss": 0.3137620964471032,
+   "v1_auc": 0.7011823857059316,
+   "v1_triple_grouped_auc": 0.6009353741496598
+  }
+ ],
+ "train_seconds": 613.718761920929,
+ "device": "Tesla T4",
+ "tf32_training": true,
+ "evaluation": "strict FP32",
+ "deterministic_algorithms": true,
+ "versions": {
+  "torch": "2.11.0+cu130",
+  "cuda": "13.0",
+  "numpy": "2.1.3"
+ },
+ "data_provenance": {
+  "manifest_sha256": "05c645e648d90c8d14fce63cfd8b020afa3c3c8978e34262c943e9002c1519c9",
+  "data_code_commit": "70cf4a359822bd99633598f653ef014f9cbbf8f2"
+ },
+ "name": "trial_02",
+ "values": {
+  "rank": 2,
+  "lr": 0.001196160807496795,
+  "rotation_init": 0.008462588737105833,
+  "gamma": 3.0,
+  "temperature": 0.5,
+  "alpha1": 0.4210984673528851,
+  "alpha2": 0.079274894295021,
+  "margin": 1.9794052741918047
+ },
+ "seed": 0,
+ "parameters": 5197184,
+ "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc",
+ "git": {
+  "commit": "32ecffc3d08d0e282d28b7a25a182be72208e5ad",
+  "dirty": false
+ },
+ "finished": "2026-11-15 20:42:28"
+}

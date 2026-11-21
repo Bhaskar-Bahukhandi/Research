@@ -1,0 +1,684 @@
+{
+ "seeds": {
+  "0": {
+   "B0": {
+    "grouped_auc": 0.885091496232508,
+    "combiner": {
+     "names": [
+      "covered",
+      "log1p_n1",
+      "log1p_n2",
+      "log1p_n3",
+      "share_len1",
+      "share_len2",
+      "share_len3",
+      "log1p_deg_h",
+      "log1p_deg_t",
+      "null_holonomy",
+      "rotate"
+     ],
+     "mean": [
+      0.9824676065689417,
+      0.008519466173241107,
+      0.7896307570023222,
+      5.456222558569328,
+      0.00041524405683369514,
+      0.09823604699938526,
+      0.8838163155127216,
+      3.723568089516596,
+      4.2911862220976955,
+      9.200477267367924,
+      -10.465833535424968
+     ],
+     "scale": [
+      0.13124408029184806,
+      0.08262174775821356,
+      1.0275421573319852,
+      2.1691594935222294,
+      0.004237599536261335,
+      0.20177109899190432,
+      0.2342858574172029,
+      1.0206185791358957,
+      1.6560750000311264,
+      5.080047198446781,
+      1.967084683362542
+     ],
+     "coef": [
+      -0.011090107778477219,
+      -0.6202890888238143,
+      0.27490828628911695,
+      -0.39377413642881126,
+      -0.5724159722788095,
+      -0.09779458945032322,
+      0.08836333818875429,
+      -0.10824955607930109,
+      0.313287275193418,
+      0.053994351251574424,
+      2.4063073970798543
+     ],
+     "intercept": -3.69606234785603,
+     "n_iter": 38
+    }
+   },
+   "B1": {
+    "grouped_auc": 0.8850719248458753,
+    "combiner": {
+     "names": [
+      "covered",
+      "log1p_n1",
+      "log1p_n2",
+      "log1p_n3",
+      "share_len1",
+      "share_len2",
+      "share_len3",
+      "log1p_deg_h",
+      "log1p_deg_t",
+      "null_holonomy",
+      "rotate",
+      "holonomy"
+     ],
+     "mean": [
+      0.9824676065689417,
+      0.008519466173241107,
+      0.7896307570023222,
+      5.456222558569328,
+      0.00041524405683369514,
+      0.09823604699938526,
+      0.8838163155127216,
+      3.723568089516596,
+      4.2911862220976955,
+      9.200477267367924,
+      -10.465833535424968,
+      0.2314159448421737
+     ],
+     "scale": [
+      0.13124408029184806,
+      0.08262174775821356,
+      1.0275421573319852,
+      2.1691594935222294,
+      0.004237599536261335,
+      0.20177109899190432,
+      0.2342858574172029,
+      1.0206185791358957,
+      1.6560750000311264,
+      5.080047198446781,
+      1.967084683362542,
+      0.7768708023469373
+     ],
+     "coef": [
+      -0.011494821166698255,
+      -0.6210485247313453,
+      0.2737606295242733,
+      -0.38972965436919665,
+      -0.5724481638401541,
+      -0.09676031953305858,
+      0.08724647350807417,
+      -0.10887627205156752,
+      0.3113855896004462,
+      0.04873524326395616,
+      2.409350893979344,
+      0.06851628562897917
+     ],
+     "intercept": -3.686198581792311,
+     "n_iter": 43
+    }
+   },
+   "delta": -1.9571386632742924e-05
+  },
+  "1": {
+   "B0": {
+    "grouped_auc": 0.8817496819649673,
+    "combiner": {
+     "names": [
+      "covered",
+      "log1p_n1",
+      "log1p_n2",
+      "log1p_n3",
+      "share_len1",
+      "share_len2",
+      "share_len3",
+      "log1p_deg_h",
+      "log1p_deg_t",
+      "null_holonomy",
+      "rotate"
+     ],
+     "mean": [
+      0.9824676065689417,
+      0.008519466173241107,
+      0.7896307570023222,
+      5.456222558569328,
+      0.00041524405683369514,
+      0.09823604699938526,
+      0.8838163155127216,
+      3.723568089516596,
+      4.2911862220976955,
+      9.200477267367924,
+      -10.380524795865899
+     ],
+     "scale": [
+      0.13124408029184806,
+      0.08262174775821356,
+      1.0275421573319852,
+      2.1691594935222294,
+      0.004237599536261335,
+      0.20177109899190432,
+      0.2342858574172029,
+      1.0206185791358957,
+      1.6560750000311264,
+      5.080047198446781,
+      1.9127757974240707
+     ],
+     "coef": [
+      -0.018626247761699525,
+      -0.6075403123822508,
+      0.28509154099502887,
+      -0.3771002041726736,
+      -0.5608041299202532,
+      -0.10599241878463256,
+      0.09099177228239433,
+      -0.10090585006066416,
+      0.3089399644463127,
+      0.059918023732456874,
+      2.3045564973767463
+     ],
+     "intercept": -3.6388409255773784,
+     "n_iter": 37
+    }
+   },
+   "B1": {
+    "grouped_auc": 0.8816713964184362,
+    "combiner": {
+     "names": [
+      "covered",
+      "log1p_n1",
+      "log1p_n2",
+      "log1p_n3",
+      "share_len1",
+      "share_len2",
+      "share_len3",
+      "log1p_deg_h",
+      "log1p_deg_t",
+      "null_holonomy",
+      "rotate",
+      "holonomy"
+     ],
+     "mean": [
+      0.9824676065689417,
+      0.008519466173241107,
+      0.7896307570023222,
+      5.456222558569328,
+      0.00041524405683369514,
+      0.09823604699938526,
+      0.8838163155127216,
+      3.723568089516596,
+      4.2911862220976955,
+      9.200477267367924,
+      -10.380524795865899,
+      0.22376037507674074
+     ],
+     "scale": [
+      0.13124408029184806,
+      0.08262174775821356,
+      1.0275421573319852,
+      2.1691594935222294,
+      0.004237599536261335,
+      0.20177109899190432,
+      0.2342858574172029,
+      1.0206185791358957,
+      1.6560750000311264,
+      5.080047198446781,
+      1.9127757974240707,
+      0.7603476306120096
+     ],
+     "coef": [
+      -0.01912561598118962,
+      -0.6082204843846889,
+      0.2834608153305695,
+      -0.37318943404371135,
+      -0.560992732506715,
+      -0.10482161190514054,
+      0.08970712414117293,
+      -0.10108152971171981,
+      0.3074713524710318,
+      0.05427162198663071,
+      2.3079067180376485,
+      0.06883394403980389
+     ],
+     "intercept": -3.629886112543854,
+     "n_iter": 43
+    }
+   },
+   "delta": -7.828554653097175e-05
+  },
+  "2": {
+   "B0": {
+    "grouped_auc": 0.8841520696741364,
+    "combiner": {
+     "names": [
+      "covered",
+      "log1p_n1",
+      "log1p_n2",
+      "log1p_n3",
+      "share_len1",
+      "share_len2",
+      "share_len3",
+      "log1p_deg_h",
+      "log1p_deg_t",
+      "null_holonomy",
+      "rotate"
+     ],
+     "mean": [
+      0.9824676065689417,
+      0.008519466173241107,
+      0.7896307570023222,
+      5.456222558569328,
+      0.00041524405683369514,
+      0.09823604699938526,
+      0.8838163155127216,
+      3.723568089516596,
+      4.2911862220976955,
+      9.200477267367924,
+      -10.478423855429947
+     ],
+     "scale": [
+      0.13124408029184806,
+      0.08262174775821356,
+      1.0275421573319852,
+      2.1691594935222294,
+      0.004237599536261335,
+      0.20177109899190432,
+      0.2342858574172029,
+      1.0206185791358957,
+      1.6560750000311264,
+      5.080047198446781,
+      1.9748967910088406
+     ],
+     "coef": [
+      -0.0234788758813844,
+      -0.600304226386514,
+      0.2682048096550467,
+      -0.39290241129183656,
+      -0.5549331858866325,
+      -0.10470741524341026,
+      0.08706053199684713,
+      -0.10106539528788738,
+      0.3150831243079463,
+      0.05996825510842118,
+      2.425853209566755
+     ],
+     "intercept": -3.7025556567628928,
+     "n_iter": 34
+    }
+   },
+   "B1": {
+    "grouped_auc": 0.8841618553674527,
+    "combiner": {
+     "names": [
+      "covered",
+      "log1p_n1",
+      "log1p_n2",
+      "log1p_n3",
+      "share_len1",
+      "share_len2",
+      "share_len3",
+      "log1p_deg_h",
+      "log1p_deg_t",
+      "null_holonomy",
+      "rotate",
+      "holonomy"
+     ],
+     "mean": [
+      0.9824676065689417,
+      0.008519466173241107,
+      0.7896307570023222,
+      5.456222558569328,
+      0.00041524405683369514,
+      0.09823604699938526,
+      0.8838163155127216,
+      3.723568089516596,
+      4.2911862220976955,
+      9.200477267367924,
+      -10.478423855429947,
+      0.22990360879206595
+     ],
+     "scale": [
+      0.13124408029184806,
+      0.08262174775821356,
+      1.0275421573319852,
+      2.1691594935222294,
+      0.004237599536261335,
+      0.20177109899190432,
+      0.2342858574172029,
+      1.0206185791358957,
+      1.6560750000311264,
+      5.080047198446781,
+      1.9748967910088406,
+      0.7844717412663125
+     ],
+     "coef": [
+      -0.023639945774320856,
+      -0.600313313381158,
+      0.26757218920325904,
+      -0.3907940079472863,
+      -0.5544863245426668,
+      -0.10416397978845061,
+      0.0864942039231564,
+      -0.10124333614589426,
+      0.3142310001591999,
+      0.05717909738890865,
+      2.427378136616185,
+      0.03821474779562735
+     ],
+     "intercept": -3.6968573373471734,
+     "n_iter": 49
+    }
+   },
+   "delta": 9.785693316371469e-06
+  }
+ },
+ "delta_bar": -2.9357079949114407e-05,
+ "ci95": [
+  -0.0001263684670892147,
+  4.612221756718627e-05
+ ],
+ "n_boot": 10000,
+ "n_clusters": 224,
+ "n_positives": 20438,
+ "decision": "fail: no added information",
+ "s11": {
+  "kind": "S11, conservative two-way (relation x entity) bootstrap; reported, never decides (notes 2026-11-17, 2026-11-18)",
+  "n_entities": 10317,
+  "ci95": [
+   -0.0002315294472110246,
+   0.0001283328516557902
+  ],
+  "narrower_than_primary": false,
+  "report": "fail: no added information"
+ },
+ "dataset": "fb15k237",
+ "freeze_commit": "e7ee64237012457f79499832ea3d12d4141c1ea2",
+ "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+ "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+ "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+ "features": [
+  "covered",
+  "log1p_n1",
+  "log1p_n2",
+  "log1p_n3",
+  "share_len1",
+  "share_len2",
+  "share_len3",
+  "log1p_deg_h",
+  "log1p_deg_t",
+  "null_holonomy",
+  "rotate",
+  "holonomy"
+ ],
+ "sources": {
+  "rotate:0": {
+   "source": "runs/g2/fb15k237/rotate/trial_17",
+   "weights_sha256": "7ea96fcfac9c22185b9bd9a70f53bcae83e09f90f8d7b6e28ca9618780f90bc7",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "rotate:1": {
+   "source": "runs/g2/fb15k237/rotate/seed_1",
+   "weights_sha256": "299d926f1c7e6de3b2bc1d730b7bcceb69d93df60e6db1959ae664a97e01dc11",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "rotate:2": {
+   "source": "runs/g2/fb15k237/rotate/seed_2",
+   "weights_sha256": "801760c1cc4825891779cefaff26705ba87ff349c143f1bc0cb7c8102d90b038",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "holonomy:0": {
+   "source": "runs/g2/fb15k237/holonomy/trial_04",
+   "weights_sha256": "ba269a5a4b861f3fedb124bc273505c5cb61aeffa96e0fb73fd79e31fcf83124",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  },
+  "holonomy:1": {
+   "source": "runs/g2/fb15k237/holonomy/seed_1",
+   "weights_sha256": "df999d16e1180bc4b0b968950c5c59403568855340a06450740c816cd2a4678d",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  },
+  "holonomy:2": {
+   "source": "runs/g2/fb15k237/holonomy/seed_2",
+   "weights_sha256": "1290028adac7ddffe3fabb93fe8304417e629b3a76b745cb8cae38292b199abe",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  }
+ },
+ "provenance": {
+  "v2_structure.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "v2",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:01"
+  },
+  "v2_rotate_seed0.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "v2",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:01"
+  },
+  "v2_rotate_seed1.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "v2",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:01"
+  },
+  "v2_rotate_seed2.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "v2",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:01"
+  },
+  "v2_holonomy_seed0.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "v2",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:01"
+  },
+  "v2_holonomy_seed1.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "v2",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:01"
+  },
+  "v2_holonomy_seed2.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "v2",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:01"
+  },
+  "test_structure.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "test",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:41"
+  },
+  "test_rotate_seed0.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "test",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:41"
+  },
+  "test_rotate_seed1.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "test",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:41"
+  },
+  "test_rotate_seed2.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "test",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:41"
+  },
+  "test_holonomy_seed0.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "test",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:41"
+  },
+  "test_holonomy_seed1.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "test",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:41"
+  },
+  "test_holonomy_seed2.npz": {
+   "head": "725febae75e54b6589bf5127764fe90c7c7830c3",
+   "dirty": false,
+   "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+   "split": "test",
+   "manifest_sha256": "9cdca837ef981ec9e56270fade74aa8c7e30878593fa47b0fde58acec03b9fdc",
+   "versions": {
+    "python": "3.13.7",
+    "numpy": "2.3.3",
+    "scipy": "1.18.1",
+    "sklearn": "1.9.1",
+    "torch": "2.8.0+cpu",
+    "pykeen": "1.11.1"
+   },
+   "created": "2026-11-21 23:47:41"
+  }
+ },
+ "versions": {
+  "python": "3.13.7",
+  "numpy": "2.3.3",
+  "scipy": "1.18.1",
+  "sklearn": "1.9.1",
+  "torch": "2.8.0+cpu",
+  "pykeen": "1.11.1"
+ },
+ "created": "2026-11-21 23:49:03"
+}

@@ -17,7 +17,7 @@ Committed on: 2026-11-06. The frozen version is the commit tagged `prereg-g2` (a
 | Gate | Date | Measured by | Pass if | Status |
 | --- | --- | --- | --- | --- |
 | G1 | 2026-12-05 | `pytest -m "week3 or week4"` and `experiments/phase1_sanity.py --full` | All week 3/4 tests pass; max holonomy score on consistent graphs < 1e-4; every cycle through a corrupted edge > 1e-2; log-log time slope < 1.3; single corruption localised in ≥ 16/20 graphs | |
-| G2 (H2) | 2027-01-02 | Phase 2 scripts, committed before the test split is first used (see Timing below) | One primary test, defined in full in the G2 section below: on the FB15k-237 test split, adding the holonomy feature to RotatE + structure raises grouped AUC; the 95% relation-cluster bootstrap CI of the seed-averaged gain has lower bound ≥ 0.005, and the gain is positive in each of the 3 seeds. | |
+| G2 (H2) | 2027-01-02 | Phase 2 scripts, committed before the test split is first used (see Timing below) | One primary test, defined in full in the G2 section below: on the FB15k-237 test split, adding the holonomy feature to RotatE + structure raises grouped AUC; the 95% relation-cluster bootstrap CI of the seed-averaged gain has lower bound ≥ 0.005, and the gain is positive in each of the 3 seeds. | **Fail, no added information** (decided 2026-11-21): Δ̄ −0.00003, 95% CI −0.00013 to +0.00005. See the note of 2026-11-22. |
 | G3 (H1) | 2027-01-30 | Phase 3 scripts | Page recall@k ≥ FAISS recall@k (k = ____); MetaQA Hits@1 within ____ points of baseline B | |
 | G4 (H3–H4) | 2027-02-27 | Phase 4 scripts | Unsupported-claim rate below max-softmax abstention at coverage ____%; parser edge F1 ≥ ____ | |
 | G5 (H5) | 2027-03-20 | Phase 5 scripts | Verified pass rate above generate-then-verify at equal compute, by ≥ ____ points | |
@@ -289,6 +289,28 @@ Each change keeps the original value visible.
   - **Freeze:** the line above replaces the one in the first note of 2026-11-21, which is kept visible but no longer read as a freeze line. `e7ee642` differs from `7210e1e` only in `experiments/g2_gate.py` and its tests. The data verification and the run checks of the first note still apply: the build code, the configs, `saved/g2/` and the training code are unchanged.
   - **Next:** recompute the V₂ features with the fixed code, then compute the test features and run `decide` once.
   - **Unchanged:** everything else in the protocol.
+- **2026-11-22, the G2 result: fail, no added information.** A record, not a change. Approved by me on 22 Nov 2026.
+  - **How it was run:**
+    - after the freeze at `e7ee642` (second note of 2026-11-21), from HEAD `725feba` with a clean tree;
+    - the V₂ features were recomputed, then the test features computed;
+    - `experiments/g2_gate.py decide --dataset fb15k237` ran once, on 21 Nov 2026.
+  - **Inputs:** both combiners use each model's best trial as seed 0, with seeds 1 and 2: RotatE trial 17 and holonomy-model trial 4 (FB15k-237).
+  - **Result** on the FB15k-237 test split (224 relations, 20,438 positives, 10 negatives each):
+    - grouped AUC of B₀ by seed: 0.8851, 0.8818, 0.8842; of B₁: 0.8851, 0.8817, 0.8842;
+    - Δ_s = −0.00002, −0.00008, +0.00001; Δ̄ = −0.00003;
+    - 95% relation-cluster CI: −0.00013 to +0.00005, which contains 0. **Decision: fail, no added information.**
+    - S11, the two-way bootstrap over 10,317 entities: −0.00023 to +0.00013, reported as the same decision.
+  - **Size of the null:**
+    - The CI's upper end is about one hundredth of the smallest effect of interest (0.005). A gain of that size is ruled out on this split, not merely undetected.
+    - In B₁ the holonomy feature's standardised coefficient is 0.04–0.07, against about 2.4 for RotatE's score.
+  - **What this does and does not show:**
+    - The learned triple holonomy score of this model adds no measurable information to RotatE + untyped structure on FB15k-237. "This model" means the 2.0M-parameter budget, 2 blocks of 64, and paths of length ≤ 3.
+    - It does not test dense rotations (S10), typed path rules (S3), or other uses of holonomy such as G1's localisation of corrupted edges.
+  - **Records:** `results/g2/gate/fb15k237/gate.json` is the decide record, with model paths made repository-relative (otherwise identical; the written file's sha256 is `d4087fb8ae3b…`). The run records of all three searches are under `results/g2/`, summarised in its README.
+  - **What follows, under the General rules:**
+    - The failed gate is reported and not re-run.
+    - The secondary analyses S1–S11 are still run and reported, and cannot change the decision.
+  - **Unchanged:** everything in the protocol.
 
 ## G2 (H2) in full
 

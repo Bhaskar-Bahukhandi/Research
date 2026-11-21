@@ -1,0 +1,115 @@
+{
+ "config": {
+  "rank": 4,
+  "lr": 0.0020632066298679184,
+  "rotation_init": 0.05873581802302772,
+  "entity_init": 1.0,
+  "gamma": 3.0,
+  "temperature": 0.5,
+  "alpha1": 0.04978732110473158,
+  "alpha2": 2.544730154631358,
+  "margin": 3.7323555592421434,
+  "num_negatives": 256,
+  "batch_size": 1024,
+  "cycles_per_triple": 8,
+  "eval_every": 10,
+  "patience": 5,
+  "max_epochs": 1000,
+  "tf32": true,
+  "seed": 0
+ },
+ "best_v1_auc": 0.7013948593375966,
+ "best_epoch": 40,
+ "epochs_run": 90,
+ "complete": true,
+ "epochs_this_process": 90,
+ "history": [
+  {
+   "epoch": 10,
+   "loss": 0.759856110460618,
+   "v1_auc": 0.6890479627318754,
+   "v1_triple_grouped_auc": 0.6200680272108843
+  },
+  {
+   "epoch": 20,
+   "loss": 0.6434280823258792,
+   "v1_auc": 0.6844618273265582,
+   "v1_triple_grouped_auc": 0.6272959183673469
+  },
+  {
+   "epoch": 30,
+   "loss": 0.5917385557118584,
+   "v1_auc": 0.6677826968613123,
+   "v1_triple_grouped_auc": 0.6181547619047619
+  },
+  {
+   "epoch": 40,
+   "loss": 0.5582704424858094,
+   "v1_auc": 0.7013948593375966,
+   "v1_triple_grouped_auc": 0.6130527210884353
+  },
+  {
+   "epoch": 50,
+   "loss": 0.5392951614716474,
+   "v1_auc": 0.668043534533025,
+   "v1_triple_grouped_auc": 0.6419642857142857
+  },
+  {
+   "epoch": 60,
+   "loss": 0.5248176006709828,
+   "v1_auc": 0.6757057057561531,
+   "v1_triple_grouped_auc": 0.6183673469387755
+  },
+  {
+   "epoch": 70,
+   "loss": 0.5194080082809224,
+   "v1_auc": 0.6756318171368028,
+   "v1_triple_grouped_auc": 0.6124149659863946
+  },
+  {
+   "epoch": 80,
+   "loss": 0.5120120181756861,
+   "v1_auc": 0.6873710766365392,
+   "v1_triple_grouped_auc": 0.6119897959183673
+  },
+  {
+   "epoch": 90,
+   "loss": 0.511563381728004,
+   "v1_auc": 0.6745251296751934,
+   "v1_triple_grouped_auc": 0.6132653061224489
+  }
+ ],
+ "train_seconds": 799.0368075370789,
+ "device": "Tesla T4",
+ "tf32_training": true,
+ "evaluation": "strict FP32",
+ "deterministic_algorithms": true,
+ "versions": {
+  "torch": "2.11.0+cu130",
+  "cuda": "13.0",
+  "numpy": "2.1.3"
+ },
+ "data_provenance": {
+  "manifest_sha256": "05c645e648d90c8d14fce63cfd8b020afa3c3c8978e34262c943e9002c1519c9",
+  "data_code_commit": "70cf4a359822bd99633598f653ef014f9cbbf8f2"
+ },
+ "name": "trial_15",
+ "values": {
+  "rank": 4,
+  "lr": 0.0020632066298679184,
+  "rotation_init": 0.05873581802302772,
+  "gamma": 3.0,
+  "temperature": 0.5,
+  "alpha1": 0.04978732110473158,
+  "alpha2": 2.544730154631358,
+  "margin": 3.7323555592421434
+ },
+ "seed": 0,
+ "parameters": 5202816,
+ "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc",
+ "git": {
+  "commit": "32ecffc3d08d0e282d28b7a25a182be72208e5ad",
+  "dirty": false
+ },
+ "finished": "2026-11-16 04:50:58"
+}

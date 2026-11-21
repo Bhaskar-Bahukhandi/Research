@@ -1,0 +1,105 @@
+{
+ "config": {
+  "model": "quate_official",
+  "dim": 34,
+  "lr": 0.4955296686604291,
+  "gamma": 9.0,
+  "temperature": 1.0,
+  "regularizer_weight": 0.876003852925707,
+  "num_negatives": 10,
+  "batch_size": 1024,
+  "filtered_negatives": true,
+  "loss": "bcewithlogits",
+  "optimizer": "adagrad",
+  "eval_every": 10,
+  "patience": 5,
+  "max_epochs": 1000,
+  "tf32": true,
+  "seed": 0
+ },
+ "best_v1_auc": 0.7208262010726919,
+ "best_epoch": 50,
+ "epochs_run": 100,
+ "complete": true,
+ "epochs_this_process": 100,
+ "history": [
+  {
+   "epoch": 10,
+   "loss": 0.48143541998881145,
+   "v1_auc": 0.7144699303891362
+  },
+  {
+   "epoch": 20,
+   "loss": 0.3604054966703394,
+   "v1_auc": 0.7116854958347598
+  },
+  {
+   "epoch": 30,
+   "loss": 0.35656913318356176,
+   "v1_auc": 0.7165011982197879
+  },
+  {
+   "epoch": 40,
+   "loss": 0.3550472919878207,
+   "v1_auc": 0.7144128723040055
+  },
+  {
+   "epoch": 50,
+   "loss": 0.3541818723642736,
+   "v1_auc": 0.7208262010726919
+  },
+  {
+   "epoch": 60,
+   "loss": 0.3535096788652857,
+   "v1_auc": 0.7180988246034463
+  },
+  {
+   "epoch": 70,
+   "loss": 0.35291688428785567,
+   "v1_auc": 0.7191601049868767
+  },
+  {
+   "epoch": 80,
+   "loss": 0.3525804543853702,
+   "v1_auc": 0.7199589181787059
+  },
+  {
+   "epoch": 90,
+   "loss": 0.35229242634504365,
+   "v1_auc": 0.7201415040511241
+  },
+  {
+   "epoch": 100,
+   "loss": 0.3521266146485967,
+   "v1_auc": 0.7191144585187722
+  }
+ ],
+ "train_seconds": 419.58553886413574,
+ "parameters": 2004912,
+ "device": "Tesla T4",
+ "tf32_training": true,
+ "evaluation": "strict FP32",
+ "deterministic_algorithms": "warn_only",
+ "versions": {
+  "torch": "2.11.0+cu130",
+  "cuda": "13.0",
+  "numpy": "2.1.3",
+  "pykeen": "1.11.1"
+ },
+ "data_provenance": {
+  "manifest_sha256": "ffe08ec30fd9a7a41906c28d42dc7f95102fdf40fca727f1205b5f4bfdde8151",
+  "data_code_commit": "70cf4a359822bd99633598f653ef014f9cbbf8f2"
+ },
+ "name": "trial_13",
+ "values": {
+  "lr": 0.4955296686604291,
+  "regularizer_weight": 0.876003852925707
+ },
+ "seed": 0,
+ "config_sha256": "cc97fddb1f1ba1cf1e9d13f3412317a397906dd8da267322b4eb75aa943910d1",
+ "git": {
+  "commit": "7210e1e3744d181d2a21aca21fbc1875b72296ed",
+  "dirty": false
+ },
+ "finished": "2026-11-21 09:10:59"
+}
