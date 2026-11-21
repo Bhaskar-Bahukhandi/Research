@@ -237,6 +237,31 @@ Each change keeps the original value visible.
   - **Write-up, no change to the protocol:** the primary CI generalises over relations drawn from a population like FB15k-237's, with the fitted models held fixed (see also the note of 2026-11-17).
   - **Code:** `rtvm.g2gate.s11_report` returns the new label; its test changes with it.
   - **Unchanged:** the primary test and its decision, S11's computation and its condition, and S1–S10.
+- **2026-11-21 (the test split has not been used), the G2 test freeze.** Approved by me on 21 Nov 2026.
+  - G2 test freeze: commit 7210e1e3744d181d2a21aca21fbc1875b72296ed
+  - **What this fixes:** at that commit, `rtvm/`, `configs/`, `saved/g2/`, `experiments/g2_build_data.py`, `experiments/g2_gate.py` and `experiments/g2_search.py`, the paths `experiments/g2_gate.py` checks. The commit that adds this note changes only this file.
+  - **Searches finished.** Every run carries the committed config's hash and ran on Kaggle T4s.
+    - **RotatE** (code `c5c44e2`, `71bf0a7`, `3c5ba66`): FB15k-237 best trial 17, V₁ 0.8801; seeds 1 and 2: 0.8764, 0.8815.
+    - **Holonomy model** (code `32ecffc`, `9cac9a2`). Between these commits the only training-code change is `rtvm.g2search.fixed_values`, which returns the same values for configs without per-dataset entries, as the holonomy and RotatE configs are.
+      - FB15k-237: best trial 4, V₁ 0.5676; seeds 1 and 2: 0.5672, 0.5669.
+      - WN18RR: best trial 14, V₁ 0.7372; seeds 1 and 2: 0.7273, 0.7267.
+      - The holonomy model's V₁ is the stratified cycle AUC (note of 2026-11-10), not the baselines' grouped AUC of `score_hrt`. The two are not compared.
+    - **QuatE**, secondary, S5 and S6 only (code `d59679e`, `7210e1e`): FB15k-237 best trial 8, V₁ 0.8737; WN18RR best trial 13, V₁ 0.9395.
+  - **Checks before the freeze.** None of them read the test split.
+    - `experiments/g2_build_data.py --check` and `--verify` on both datasets, with library versions equal to the manifests': every file regenerated from the committed code matches the committed manifest (16 files per dataset).
+      - FB15k-237: 20,438 test positives; 5.79% of test negatives come from the fallback.
+      - WN18RR: 2,924 test positives; none from the fallback.
+    - `experiments/g2_gate.py` accepts the runs: for RotatE and the holonomy model, seed 0 is the best trial, and seeds 1 and 2 match its values and the committed config.
+    - A dry run of the V₂ features from this commit's code, with the real models, wrote finite features with clean provenance. The noise negative control (`smoke`) was rerun on them, now with S11. Its CI contains 0 (−0.00056 to +0.00021), and S11's interval is wider (4,781 entities). These files were written outside `runs/g2gate/` and are not used. The V₂ features are recomputed after this note is committed.
+  - **For the write-up (no change):**
+    - On WN18RR, QuatE's best learning rate (0.496) lies at the top of its search range [0.02, 0.5].
+    - 6 of the 20 WN18RR QuatE trials reached the 1,000-epoch cap.
+    - Both the range and the cap were fixed before the search (note of 2026-11-16 and the shared rules) and are kept. S5 and S6 on WN18RR may therefore understate QuatE.
+  - **Next, in this order:**
+    1. V₂ features, then test features, for RotatE and the holonomy model;
+    2. `g2_gate.py decide --dataset fb15k237`, once;
+    3. the secondary analyses.
+  - **Unchanged:** everything in the protocol.
 
 ## G2 (H2) in full
 
