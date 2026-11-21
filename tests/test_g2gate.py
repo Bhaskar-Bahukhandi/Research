@@ -345,14 +345,17 @@ def test_check_test_allowed_in_a_scratch_repo(tmp_path, monkeypatch):
     (tmp_path / "rtvm").mkdir()
     (tmp_path / "notes").mkdir()
     (tmp_path / "rtvm" / "a.py").write_text("x = 1\n")
-    (tmp_path / "notes" / "protocol.md").write_text("# protocol\n")
+    # The real protocol is UTF-8. ρ is CF 81 in UTF-8, and 0x81 is undefined in cp1252, Windows'
+    # default codepage: decoding with it raised UnicodeDecodeError on 21 Nov 2026.
+    head = "# protocol\nν σ² ρ Δ̄\n"
+    (tmp_path / "notes" / "protocol.md").write_text(head, encoding="utf-8")
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-qm", "code")
     with pytest.raises(SystemExit):
         gate.check_test_allowed()                                         # no freeze line yet
     frozen = gate.git("rev-parse", "HEAD")
-    (tmp_path / "notes" / "protocol.md").write_text(f"# protocol\n- G2 test freeze: commit {frozen}\n")
+    (tmp_path / "notes" / "protocol.md").write_text(f"{head}- G2 test freeze: commit {frozen}\n", encoding="utf-8")
     _git(tmp_path, "commit", "-qam", "freeze note")
     assert gate.check_test_allowed() == frozen
     state = gate.code_state()
@@ -365,6 +368,29 @@ def test_check_test_allowed_in_a_scratch_repo(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         gate.check_test_allowed()                                         # frozen code changed since the freeze
     assert gate.code_state()["frozen_tree"] != state["frozen_tree"]
+
+
+def test_committed_manifest_matches_its_own_checkout(tmp_path, monkeypatch):
+    # The manifest ends with a newline; reading the committed copy must keep it (a stripped
+    # copy never matched, which refused the first test-feature run of 21 Nov 2026).
+    gate = _gate_script()
+    monkeypatch.setattr(gate, "ROOT", tmp_path)
+    path = tmp_path / "saved" / "g2" / "fb15k237" / "manifest.json"
+    path.parent.mkdir(parents=True)
+    text = '{\n  "files": {"a.npy": "ab12"},\n  "note": "ν"\n}\n'
+    path.write_bytes(text.encode("utf-8"))
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "manifest")
+    committed = gate.committed_file("saved/g2/fb15k237/manifest.json")
+    assert committed == text
+    gate.check_manifest(path, committed)
+    path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))          # a Windows checkout
+    gate.check_manifest(path, committed)
+    for changed in (text.replace("ab12", "ab13"), text.rstrip("\n"), text + "\n"):
+        path.write_bytes(changed.encode("utf-8"))
+        with pytest.raises(ValueError):
+            gate.check_manifest(path, committed)
 
 
 def test_provenance_check():

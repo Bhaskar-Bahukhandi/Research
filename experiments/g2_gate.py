@@ -62,11 +62,17 @@ MODEL_CONFIG = {"rotate": "rotate", "holonomy": "holonomy"}     # gate model nam
 
 # ---------------------------------------------------------------- guard and provenance
 
-def git(*args: str) -> str:
-    done = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
+def git(*args: str, strip: bool = True) -> str:
+    # UTF-8 whatever the locale: the protocol is UTF-8, and Windows' default codepage cannot decode it
+    done = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, encoding="utf-8")
     if done.returncode != 0:
         sys.exit(f"git {' '.join(args)} failed: {done.stderr.strip()}")
-    return done.stdout.strip()
+    return done.stdout.strip() if strip else done.stdout
+
+
+def committed_file(path: str) -> str:
+    """A file's text as committed at HEAD, exactly (not stripped: byte comparisons need the final newline)."""
+    return git("show", f"HEAD:{path}", strip=False)
 
 
 def freeze_commit(protocol_text: str) -> str:
@@ -82,7 +88,7 @@ def check_test_allowed() -> str:
     if git("status", "--porcelain"):
         sys.exit("the test split needs a clean git tree")
     try:
-        commit = freeze_commit(git("show", "HEAD:notes/protocol.md"))
+        commit = freeze_commit(committed_file("notes/protocol.md"))
     except ValueError as e:
         sys.exit(f"test split refused: {e}")
     if subprocess.run(["git", "-C", str(ROOT), "merge-base", "--is-ancestor", commit, "HEAD"]).returncode != 0:
@@ -128,6 +134,13 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def check_manifest(manifest_path: Path, committed: str) -> None:
+    """The manifest on disk must equal the committed text byte for byte, line endings aside
+    (a Windows checkout writes CRLF)."""
+    if manifest_path.read_bytes().replace(b"\r\n", b"\n") != committed.encode("utf-8").replace(b"\r\n", b"\n"):
+        raise ValueError(f"{manifest_path} differs from the manifest committed at HEAD")
+
+
 def load_split(dataset: str, split: str, saved: Path, data: Path, allow_test: bool = False,
                committed_manifest: str | None = None) -> dict:
     """Positives, negatives, fallback flags, path counts and codes of V2 or test, hash-checked.
@@ -145,9 +158,8 @@ def load_split(dataset: str, split: str, saved: Path, data: Path, allow_test: bo
         raise PermissionError("the test split is loaded only after check_test_allowed()")
     small, large = saved / dataset, data / dataset
     manifest_path = small / "manifest.json"
-    if committed_manifest is not None and manifest_path.read_bytes().replace(b"\r\n", b"\n") != \
-            committed_manifest.encode().replace(b"\r\n", b"\n"):
-        raise ValueError(f"{manifest_path} differs from the manifest committed at HEAD")
+    if committed_manifest is not None:
+        check_manifest(manifest_path, committed_manifest)
     manifest = json.loads(manifest_path.read_text())
     ds = get_dataset(dataset=dataset)
     train, valid, test = (x.mapped_triples.numpy().astype(np.int64) for x in (ds.training, ds.validation, ds.testing))
@@ -328,7 +340,7 @@ def main() -> None:
     t0 = time.time()
 
     if args.command == "features":
-        committed = git("show", f"HEAD:saved/g2/{args.dataset}/manifest.json") if freeze else None
+        committed = committed_file(f"saved/g2/{args.dataset}/manifest.json") if freeze else None
         d = load_split(args.dataset, args.split, Path(args.saved), Path(args.data), allow_test=freeze is not None,
                        committed_manifest=committed)
         prov = dict(**state, split=args.split, manifest_sha256=d["manifest_sha256"], versions=versions(),
