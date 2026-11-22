@@ -966,7 +966,8 @@ def main() -> None:
         target = out_dir / f"s6_{args.baseline}.json"
 
     gate.write_json(target, res)
-    print(f"wrote {target} ({time.time() - t0:.0f} s); the gate is reproduced")
+    reproduced = res.get("check", {}).get("reproduces_gate", False)  # s8 scores single models and has no check
+    print(f"wrote {target} ({time.time() - t0:.0f} s)" + ("; the gate is reproduced" if reproduced else ""))
 
 
 if __name__ == "__main__":

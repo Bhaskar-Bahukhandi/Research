@@ -94,3 +94,122 @@ The model paths in `sources` are made relative to the repository; the file is ot
 | WN18RR | 4 | 0.070 / 0.059 / 0.058 | 2.18 | 8.00 | 0.03 |
 
 On WN18RR, training moved the rotations to about 3% of their initial distance from the identity in all three seeds. This is the "rotations collapse to the identity" risk listed in the proposal. On FB15k-237, the rotations moved away from the identity.
+
+## Secondary analyses, second batch (run 2026-11-22)
+
+The records follow the protocol note of 2026-11-22 (fourth). Each names the commit that made it:
+
+| Record | Analysis | Commit |
+| --- | --- | --- |
+| `gate/wn18rr/gate.json` | S1 | `16a783b` |
+| `secondary/wn18rr/s7_wn18rr.json` | S7 (WN18RR part) | `4f7e405` |
+| `secondary/fb15k237/s5.json` | S5 | `4f7e405` |
+| `secondary/fb15k237/s4.json` | S4 | `8605233` |
+| `secondary/{fb15k237,wn18rr}/s8.json` | S8 | `2981339` |
+| `secondary/fb15k237/s10.json` | S10 | `2981339` |
+
+As in the first batch:
+- S1 is the gate's own record for WN18RR, written once by `g2_gate.py decide --dataset wn18rr`.
+- S4, S5, S7 and S10 each reproduced their dataset's gate (per-seed grouped AUCs, Δ̄ and CI) exactly before computing anything new. S8 scores single models and uses no combiner.
+- Model paths are repository-relative, and the records are otherwise as written.
+- None of these analyses has a pass rule, and none can change the gate.
+
+### S1: WN18RR, the gate's procedure
+
+**Decision label: fail, no added information.** It is not a gate.
+
+| | Seed 0 | Seed 1 | Seed 2 |
+| --- | --- | --- | --- |
+| B₀ grouped AUC (RotatE + structure) | 0.9610 | 0.9632 | 0.9600 |
+| B₁ grouped AUC (+ holonomy) | 0.9611 | 0.9633 | 0.9602 |
+| Δ | +0.00007 | +0.00014 | +0.00024 |
+
+- **Δ̄** = +0.00015, with 95% relation-cluster CI −0.00035 to +0.00122.
+- **Sample:** only 11 relations and 2,924 test positives, so the CI is about nine times wider than on FB15k-237.
+- **Holonomy coefficient:** −0.31 to −0.38 in B₁. WN18RR's rotations collapsed toward the identity (collapse check below).
+
+### S7, WN18RR part: test positives whose reverse is in training
+
+| Group | Positives | Relations | Δ per seed | Δ̄ | 95% CI |
+| --- | --- | --- | --- | --- | --- |
+| Exact reverse (t, r, h) is a training triple | 1,086 | 4 | 0 / 0 / 0 | 0 | 0 to 0 |
+| The rest | 1,838 | 10 | +0.00011 / +0.00022 / +0.00038 | +0.00024 | −0.00055 to +0.00200 |
+
+Holonomy changes no ranking among the positives whose reverse is in training.
+
+### S5: QuatE in RotatE's place
+
+In both combiners, QuatE's `score_hrt` takes the column RotatE held. The column keeps the name `rotate` in the record.
+
+| | Seed 0 | Seed 1 | Seed 2 |
+| --- | --- | --- | --- |
+| B₀ᵠ grouped AUC (QuatE + structure) | 0.8734 | 0.8747 | 0.8734 |
+| B₁ᵠ grouped AUC (+ holonomy) | 0.8724 | 0.8738 | 0.8722 |
+| Δ | −0.00101 | −0.00086 | −0.00119 |
+
+- **Δ̄** = −0.00102, with 95% CI −0.00201 to +0.00018.
+- **Holonomy coefficient:** −0.88 to −1.03, against +0.04 to +0.07 next to RotatE.
+
+### S4: path length
+
+| Analysis | Test rows with such a cycle | Δ per seed | Δ̄ | 95% CI |
+| --- | --- | --- | --- | --- |
+| (a) cycles with a path of length 1 only | 1.2% | +0.00000 / −0.00000 / +0.00000 | −0.00000 | −0.00001 to +0.00000 |
+| (a) length 2 only | 48.7% | −0.00000 / −0.00002 / −0.00007 | −0.00003 | −0.00012 to +0.00004 |
+| (a) length 3 only | 95.8% | −0.00000 / −0.00003 / +0.00001 | −0.00001 | −0.00008 to +0.00005 |
+| (b) whole test, paths of length ≤ 2 | 48.9% covered | +0.00001 / −0.00004 / +0.00001 | −0.00001 | −0.00004 to +0.00002 |
+
+- "Test rows" pools positives and negatives.
+- In (b), B₀ with the restricted structure has grouped AUC 0.8861 / 0.8828 / 0.8851. That is 0.001 above the gate's B₀ with L ≤ 3.
+
+### S8: filtered link prediction (test split)
+
+These are realistic ranks over both directions, filtered against train, validation and test. Values are the mean ± std over the 3 seeds (ddof 1).
+
+| Model | Dimension | MRR | Hits@1 | Hits@10 |
+| --- | --- | --- | --- | --- |
+| **FB15k-237** (20,438 test triples) | | | | |
+| RotatE | 68 | 0.311 ± 0.001 | 0.216 ± 0.001 | 0.503 ± 0.002 |
+| QuatE | 34 | 0.305 ± 0.001 | 0.215 ± 0.001 | 0.487 ± 0.002 |
+| Holonomy model, single-triple score | 128 | 0.096 ± 0.042 | 0.027 ± 0.027 | 0.241 ± 0.082 |
+| **WN18RR** (2,924 test triples) | | | | |
+| RotatE | 64 | 0.472 ± 0.003 | 0.402 ± 0.006 | 0.603 ± 0.005 |
+| QuatE | 32 | 0.363 ± 0.013 | 0.276 ± 0.018 | 0.532 ± 0.003 |
+| Holonomy model, single-triple score | 128 | 0.0002 ± 0.0001 | 0 | 0.0003 ± 0.0005 |
+
+**Published values**, from PyKEEN's bundled configs. Check them against the papers before citing, as `notes/baseline_reproduction.md` and `notes/quate_check.md` say.
+
+| Dataset | RotatE (dimension 1000 / 500) | QuatE¹ |
+| --- | --- | --- |
+| FB15k-237 | 0.338 / 0.241 / 0.533 | 0.311 / 0.221 / 0.495 |
+| WN18RR | 0.476 / 0.428 / 0.571 | 0.481 / 0.436 / 0.564 |
+
+Two things limit the comparison:
+- **Test sets:** the published figures include the test triples PyKEEN drops (28 on FB15k-237 and 210 on WN18RR). Counting those at reciprocal rank ≈ 0 multiplies our WN18RR figures by about 0.933.
+- **Sizes:** our models are budget-matched (2.0M parameters), far smaller than the papers'.
+
+The WN18RR QuatE search's best learning rate lies at the edge of its range (see QuatE above), so its numbers may understate QuatE.
+
+**The holonomy model's single-triple score is not a link predictor.** On WN18RR, a check on V₂ put the true tail's median rank at about 24,000 of 40,559 entities. Early stopping selects the model by V₁ cycle AUC, not by link prediction.
+
+### S10: dense rotations (rank 32, 3,798,144 parameters, outside the 2.0M budget)
+
+The model has every other value of the best trial (trial 4); there was no new search. It was trained on Kaggle T4s (session `rtvm-g2-s10-s1`), and all three seeds stopped early:
+
+| Seed | Best V₁ AUC | Best epoch | Epochs run |
+| --- | --- | --- | --- |
+| 0 | 0.5657 | 40 | 90 |
+| 1 | 0.5662 | 60 | 110 |
+| 2 | 0.5659 | 20 | 70 |
+
+The gate's rank-2 runs reached about 0.567.
+
+| | Seed 0 | Seed 1 | Seed 2 |
+| --- | --- | --- | --- |
+| B₀ grouped AUC | 0.8851 | 0.8817 | 0.8842 |
+| B₁ grouped AUC (+ dense holonomy) | 0.8851 | 0.8817 | 0.8842 |
+| Δ | +0.00003 | −0.00001 | 0.00000 |
+
+- **Δ̄** = +0.00001, with 95% CI −0.00004 to +0.00006, against the gate's −0.00003 (−0.00013 to +0.00005).
+- **Holonomy coefficient:** −0.03 to −0.11.
+- **Rotation distance from the identity:** median ‖U_r − I‖_F of 1.34 / 1.35 / 1.03, against a largest possible 22.6. That is the same range as the rank-2 runs (1.35 / 1.14 / 1.21). No fresh-draw reference was computed at rank 32.

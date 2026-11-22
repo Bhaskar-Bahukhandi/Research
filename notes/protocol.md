@@ -423,6 +423,43 @@ Each change keeps the original value visible.
     - **Test:** the primary test with the dense model's holonomy in place of the rank-2 model's. The collapse check is also reported for it.
   - **Order:** S1 and S7 (WN18RR), S5, S4, S8, then S10.
   - **Unchanged:** everything in the protocol.
+- **2026-11-22, fifth note: results of S1, S4, S5, S7 (WN18RR part), S8 and S10.** A record, not a change. Approved by me on 22 Nov 2026.
+  - **How they were run:**
+    - each command was committed before it ran: S1 at `16a783b`, S5 and S7 (WN18RR) at `4f7e405`, S4 at `8605233`, S8 and S10 at `2981339`;
+    - each passed the gate's guard (freeze `e7ee642`);
+    - S4, S5, S7 and S10 reproduced their dataset's gate exactly before computing anything new;
+    - S8's two attempts at `251738e` did not finish: the first ended with the local session, and Windows killed the second for lack of memory. Both S8 records come from the rerun at `2981339`, which scores in slices; a test checks that sliced and unsliced scoring give the same scores.
+    - The S10 models were trained in one Kaggle session (`rtvm-g2-s10-s1`), in about 1.8 h. All three seeds stopped early (best V₁ AUC 0.5657 / 0.5662 / 0.5659; the rank-2 runs reached about 0.567).
+  - **Records:** `results/g2/gate/wn18rr/gate.json` and `results/g2/secondary/`, summarised in `results/g2/README.md`, with model paths made repository-relative.
+  - **Results:**
+    - **S1, WN18RR:** decision label "fail, no added information" (not a gate).
+      - Δ̄ +0.00015, CI −0.00035 to +0.00122, over 11 relations and 2,924 positives.
+      - The CI is about nine times wider than on FB15k-237.
+    - **S7, WN18RR part:**
+      - For the 1,086 positives whose exact reverse is a training triple (4 relations), Δ is exactly 0 in every seed.
+      - For the other 1,838 (10 relations): Δ̄ +0.00024, CI −0.00055 to +0.00200.
+    - **S5, QuatE in RotatE's place:**
+      - B₀ᵠ 0.873–0.875, below B₀ with RotatE (0.882–0.885).
+      - Δ̄ −0.00102, CI −0.00201 to +0.00018, negative in every seed.
+    - **S4, path length:**
+      - (a) Holonomy from cycles of a single path length adds nothing at any length: Δ̄ between −0.00003 and 0, with every CI within ±0.00012.
+      - (b) With paths of length ≤ 2 throughout: Δ̄ −0.00001, CI −0.00004 to +0.00002. B₀ itself is about 0.001 higher than with L ≤ 3.
+    - **S8, filtered realistic MRR (mean over seeds):**
+      - RotatE 0.311 (FB15k-237) and 0.472 (WN18RR).
+      - QuatE 0.305 and 0.363.
+      - The holonomy model's single-triple score 0.096 and 0.0002, so it is not a link predictor.
+      - These models are budget-matched and far smaller than the papers' models (published values in `results/g2/README.md`).
+    - **S10, dense rotations (rank 32, 3.80M parameters, outside the budget):**
+      - Δ̄ +0.00001, CI −0.00004 to +0.00006.
+      - The rotations moved as far from the identity as at rank 2 (median ‖U_r − I‖_F 1.03–1.35).
+  - **Reading:**
+    - Holonomy adds no information in any analysis of G2: on either dataset, from any rotation source (the holonomy model at rank 2 or rank 32, RotatE, QuatE), and at any path length. Where Δ̄ is clearly non-zero (S6, S9b), it is negative.
+    - Low-rank capacity, the first hypothesis left open in the third note, is not the explanation: S10 at almost twice the parameters gives the same null.
+    - The S3 result stands: typed path rules add +0.0107 over B₀ on FB15k-237. The path signal is there, and the holonomy defect does not carry it.
+    - On WN18RR the null is less informative: the rotations collapsed toward the identity (collapse check), the test has 11 relations, and for the third of its positives whose reverse is in training, holonomy changes nothing.
+  - **Still open, for the paper to state only as hypotheses:** averaging the defect over all sampled cycles (rules weight each pattern per relation and take the maximum), and training for cycle consistency rather than for separating true from false.
+  - **Owed:** nothing. Every secondary analysis listed in the G2 section has now been run.
+  - **Unchanged:** everything in the protocol.
 
 ## G2 (H2) in full
 

@@ -1,0 +1,90 @@
+{
+ "kind": "S7, WN18RR part: Delta-bar for test positives whose exact reverse is a training triple, and for the rest; protocol note of 2026-11-22 (fourth); no pass rule",
+ "check": {
+  "reproduces_gate": true,
+  "delta_bar": 0.0001481988144094847,
+  "ci95": [
+   -0.00035033640499388503,
+   0.0012191818898757577
+  ]
+ },
+ "groups": {
+  "reverse_in_training": {
+   "delta_per_seed": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delta_bar": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "n_positives": 1086,
+   "n_clusters": 4,
+   "n_boot": 10000
+  },
+  "rest": {
+   "delta_per_seed": [
+    0.00010881392818280727,
+    0.00021762785636561462,
+    0.00038084874863982606
+   ],
+   "delta_bar": 0.00023576351106274938,
+   "ci95": [
+    -0.000552498917941798,
+    0.002001291042953347
+   ],
+   "n_positives": 1838,
+   "n_clusters": 10,
+   "n_boot": 10000
+  }
+ },
+ "n_reverse_in_training": 1086,
+ "n_positives": 2924,
+ "dataset": "wn18rr",
+ "freeze_commit": "e7ee64237012457f79499832ea3d12d4141c1ea2",
+ "head": "4f7e405b6fd2f8c7220263131343f57048fe2ab7",
+ "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+ "gate_sources": {
+  "rotate:0": {
+   "source": "runs/g2/wn18rr/rotate/trial_08",
+   "weights_sha256": "e9644139dec915142ddc6a68eb46fd65b24a79a8b7f0a1a7e93581c3d725760f",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "rotate:1": {
+   "source": "runs/g2/wn18rr/rotate/seed_1",
+   "weights_sha256": "a9b095badc7a7c41f71a0f2d01c9fb4bc64911638a425db94c7b741185c476fe",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "rotate:2": {
+   "source": "runs/g2/wn18rr/rotate/seed_2",
+   "weights_sha256": "862b2502825c004f7e46cd1931572032dd142a5ed21f249167a48aa4ae40b5b4",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "holonomy:0": {
+   "source": "runs/g2/wn18rr/holonomy/trial_14",
+   "weights_sha256": "6c892d7bd57183258bf7a1b6419c32d2f88cd14eed626dd71ff08c31cbddfc2e",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  },
+  "holonomy:1": {
+   "source": "runs/g2/wn18rr/holonomy/seed_1",
+   "weights_sha256": "fc69fb7ebce5a836371c51105b0f02598f168ab89709bf936498ee1ae7c16c48",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  },
+  "holonomy:2": {
+   "source": "runs/g2/wn18rr/holonomy/seed_2",
+   "weights_sha256": "023b2239f8edd4fc0f20bcc07d1866c38b168fbd6099ecb0e6c3075b048cf1b8",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  }
+ },
+ "versions": {
+  "python": "3.13.7",
+  "numpy": "2.3.3",
+  "scipy": "1.18.1",
+  "sklearn": "1.9.1",
+  "torch": "2.8.0+cpu",
+  "pykeen": "1.11.1"
+ },
+ "created": "2026-11-22 15:06:14"
+}

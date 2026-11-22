@@ -1,0 +1,169 @@
+{
+ "kind": "S8, filtered link prediction on the test split, realistic ranks, both directions; std over the 3 seeds with ddof = 1; protocol note of 2026-11-22 (fourth); no pass rule",
+ "models": {
+  "rotate": {
+   "seeds": {
+    "0": {
+     "run": "runs/g2/fb15k237/rotate/trial_17",
+     "mrr": 0.3118663608861083,
+     "hits_at_1": 0.2161904295919366,
+     "hits_at_10": 0.5035717780604756,
+     "n_ranks": 40876
+    },
+    "1": {
+     "run": "runs/g2/fb15k237/rotate/seed_1",
+     "mrr": 0.3106357683887276,
+     "hits_at_1": 0.2167041784910461,
+     "hits_at_10": 0.501369997064292,
+     "n_ranks": 40876
+    },
+    "2": {
+     "run": "runs/g2/fb15k237/rotate/seed_2",
+     "mrr": 0.31119981286460924,
+     "hits_at_1": 0.21504061062726293,
+     "hits_at_10": 0.5047705254917311,
+     "n_ranks": 40876
+    }
+   },
+   "mean_std_over_seeds": {
+    "mrr": {
+     "mean": 0.31123398071314834,
+     "std": 0.0006160073498407109
+    },
+    "hits_at_1": {
+     "mean": 0.21597840623674855,
+     "std": 0.0008518098007841416
+    },
+    "hits_at_10": {
+     "mean": 0.5032374335388329,
+     "std": 0.0017247429057165964
+    }
+   }
+  },
+  "quate": {
+   "seeds": {
+    "0": {
+     "run": "runs/g2/fb15k237/quate/trial_08",
+     "mrr": 0.303723230291008,
+     "hits_at_1": 0.21384186319600743,
+     "hits_at_10": 0.48551717389177024,
+     "n_ranks": 40876
+    },
+    "1": {
+     "run": "runs/g2/fb15k237/quate/seed_1",
+     "mrr": 0.306302362843569,
+     "hits_at_1": 0.2156032879929543,
+     "hits_at_10": 0.4895048439181916,
+     "n_ranks": 40876
+    },
+    "2": {
+     "run": "runs/g2/fb15k237/quate/seed_2",
+     "mrr": 0.3061798510184815,
+     "hits_at_1": 0.216728642724337,
+     "hits_at_10": 0.4861777081906253,
+     "n_ranks": 40876
+    }
+   },
+   "mean_std_over_seeds": {
+    "mrr": {
+     "mean": 0.3054018147176862,
+     "std": 0.0014549867851414993
+    },
+    "hits_at_1": {
+     "mean": 0.21539126463776626,
+     "std": 0.001455022143699054
+    },
+    "hits_at_10": {
+     "mean": 0.48706657533352904,
+     "std": 0.0021372743525821056
+    }
+   }
+  },
+  "holonomy_single_triple": {
+   "seeds": {
+    "0": {
+     "run": "runs/g2/fb15k237/holonomy/trial_04",
+     "mrr": 0.07946267932136583,
+     "hits_at_1": 0.013748899109501908,
+     "hits_at_10": 0.21709560622370094,
+     "n_ranks": 40876
+    },
+    "1": {
+     "run": "runs/g2/fb15k237/holonomy/seed_1",
+     "mrr": 0.14378660946176508,
+     "hits_at_1": 0.057613269400137,
+     "hits_at_10": 0.33188178882473823,
+     "n_ranks": 40876
+    },
+    "2": {
+     "run": "runs/g2/fb15k237/holonomy/seed_2",
+     "mrr": 0.06446144701716304,
+     "hits_at_1": 0.00914962325080732,
+     "hits_at_10": 0.17293766513357473,
+     "n_ranks": 40876
+    }
+   },
+   "mean_std_over_seeds": {
+    "mrr": {
+     "mean": 0.09590357860009797,
+     "std": 0.04214080832204915
+    },
+    "hits_at_1": {
+     "mean": 0.02683726392014874,
+     "std": 0.02675182647193072
+    },
+    "hits_at_10": {
+     "mean": 0.24063835339400463,
+     "std": 0.08204574530243237
+    }
+   }
+  }
+ },
+ "n_test": 20438,
+ "n_known": 310079,
+ "dataset": "fb15k237",
+ "freeze_commit": "e7ee64237012457f79499832ea3d12d4141c1ea2",
+ "head": "2981339ed5daeaaf3254eee746cf6bb64b3e5c21",
+ "frozen_tree": "3db3fcfa47bf8f996ad792e0e18d9cdfc5054e9889db8de499b90ecab6b662a0",
+ "gate_sources": {
+  "rotate:0": {
+   "source": "runs/g2/fb15k237/rotate/trial_17",
+   "weights_sha256": "7ea96fcfac9c22185b9bd9a70f53bcae83e09f90f8d7b6e28ca9618780f90bc7",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "rotate:1": {
+   "source": "runs/g2/fb15k237/rotate/seed_1",
+   "weights_sha256": "299d926f1c7e6de3b2bc1d730b7bcceb69d93df60e6db1959ae664a97e01dc11",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "rotate:2": {
+   "source": "runs/g2/fb15k237/rotate/seed_2",
+   "weights_sha256": "801760c1cc4825891779cefaff26705ba87ff349c143f1bc0cb7c8102d90b038",
+   "config_sha256": "d1e0f09b9869af586d36c934b6615c8763dc5cce89e259ca2750020e37356124"
+  },
+  "holonomy:0": {
+   "source": "runs/g2/fb15k237/holonomy/trial_04",
+   "weights_sha256": "ba269a5a4b861f3fedb124bc273505c5cb61aeffa96e0fb73fd79e31fcf83124",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  },
+  "holonomy:1": {
+   "source": "runs/g2/fb15k237/holonomy/seed_1",
+   "weights_sha256": "df999d16e1180bc4b0b968950c5c59403568855340a06450740c816cd2a4678d",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  },
+  "holonomy:2": {
+   "source": "runs/g2/fb15k237/holonomy/seed_2",
+   "weights_sha256": "1290028adac7ddffe3fabb93fe8304417e629b3a76b745cb8cae38292b199abe",
+   "config_sha256": "a4b7bb683a26ac2d522f6044fedc8de3897e7ed57144a072eccb2cd3fc6df9dc"
+  }
+ },
+ "versions": {
+  "python": "3.13.7",
+  "numpy": "2.3.3",
+  "scipy": "1.18.1",
+  "sklearn": "1.9.1",
+  "torch": "2.8.0+cpu",
+  "pykeen": "1.11.1"
+ },
+ "created": "2026-11-22 17:35:40"
+}
