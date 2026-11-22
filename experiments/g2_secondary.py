@@ -2,9 +2,8 @@
 
     python experiments/g2_secondary.py basic --dataset fb15k237      # S2, S7 (FB15k-237 part), S9
     python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline rotate   # S6, RotatE's rotations
+    python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline quate    # S6, QuatE's rotations
     python experiments/g2_secondary.py s3 --dataset fb15k237         # S3, typed path rules
-
-S6 with QuatE follows in this file.
 
 This code lives outside the frozen paths on purpose, so that the test-split guard of
 experiments/g2_gate.py keeps holding. It imports the frozen gate code unchanged, reads the
@@ -214,18 +213,44 @@ def rotate_rotations(relation_weights, gamma: float, dim: int):
     return torch.stack([torch.stack([c, -s], -1), torch.stack([s, c], -1)], -2)
 
 
+def quate_rotations(relation_weights, table):
+    """QuatE's relations as block rotations, (R, dim, 4, 4): each coordinate's normalised
+    quaternion r^ as the matrix of right multiplication h -> h (x) r^, the action in the official
+    score (rtvm.baselines.NormalizedQuatEInteraction). table (4, 4, 4) is PyKEEN's quaternion
+    multiplication table, so (h (x) r)_k = sum_ij h_i r_j table[i, j, k]."""
+    import torch
+    w = torch.as_tensor(relation_weights, dtype=torch.float32)
+    r = w.reshape(w.shape[0], -1, 4)
+    r = r / r.norm(p=2, dim=-1, keepdim=True)
+    return torch.einsum("rdj,ijk->rdki", r, torch.as_tensor(table, dtype=torch.float32))
+
+
+def model_runs_any(runs: Path, dataset: str, model: str) -> dict:
+    """g2_gate.model_runs, which checks config hash, best trial and seed runs, for any searched
+    model (the gate script itself only names its two gate models)."""
+    saved = gate.MODEL_CONFIG
+    gate.MODEL_CONFIG = {**saved, model: model}
+    try:
+        return gate.model_runs(runs, dataset, model)
+    finally:
+        gate.MODEL_CONFIG = saved
+
+
 def baseline_tables(runs: Path, dataset: str, baseline: str) -> dict:
     """Seed -> (step table, run stem) of the baseline's own relation rotations (S6)."""
     import torch
     out = {}
-    for s, stem in gate.model_runs(runs, dataset, baseline).items():
+    for s, stem in model_runs_any(runs, dataset, baseline).items():
         rec = json.loads(stem.with_suffix(".json").read_text())
         weights = torch.load(f"{stem}_best.pt", map_location="cpu", weights_only=True)
         if baseline == "rotate":
             R = rotate_rotations(weights["relation_representations.0._embeddings.weight"],
                                  rec["config"]["gamma"], rec["config"]["dim"])
+        elif baseline == "quate":
+            R = quate_rotations(weights["relation_representations.0._embeddings.weight"],
+                                weights["interaction.table"])
         else:
-            raise ValueError(f"S6 for {baseline!r} is not implemented yet")
+            raise ValueError(f"S6 has no rotations for {baseline!r}")
         out[s] = (rotation_table(R), stem)
     return out
 
@@ -409,7 +434,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["basic", "s6", "s3"])
     ap.add_argument("--dataset", required=True, choices=["fb15k237", "wn18rr"])
-    ap.add_argument("--baseline", choices=["rotate"], help="s6: whose relation rotations")
+    ap.add_argument("--baseline", choices=["rotate", "quate"], help="s6: whose relation rotations")
     ap.add_argument("--gate", default=str(ROOT / "runs/g2gate"))
     ap.add_argument("--runs", default=str(ROOT / "runs/g2"))
     ap.add_argument("--saved", default=str(ROOT / "saved/g2"))

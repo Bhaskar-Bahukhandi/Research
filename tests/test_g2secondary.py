@@ -135,6 +135,44 @@ def test_rotate_holonomy_is_zero_exactly_when_phases_compose():
     assert d[2].item() == pytest.approx(torch.sqrt((4 - 4 * torch.cos(phi)).sum()).item(), rel=1e-5)
 
 
+def test_quate_rotations_act_as_the_official_score():
+    import torch
+    from pykeen.nn import quaternion
+    from rtvm.baselines import NormalizedQuatEInteraction
+    sec = _secondary()
+    g = torch.Generator().manual_seed(1)
+    R, dim = 3, 5
+    w = torch.randn(R, dim * 4, generator=g) * 0.3                           # stored unnormalised, flattened
+    table = quaternion.multiplication_table()
+    M = sec.quate_rotations(w, table)                                          # (R, dim, 4, 4)
+    assert M.shape == (R, dim, 4, 4)
+    assert torch.allclose(M @ M.transpose(-1, -2), torch.eye(4).expand(R, dim, 4, 4), atol=1e-5)
+    assert torch.allclose(torch.linalg.det(M), torch.ones(R, dim), atol=1e-5)  # rotations, not reflections
+    h, t = torch.randn(dim, 4, generator=g), torch.randn(dim, 4, generator=g)
+    want = NormalizedQuatEInteraction()(h, w[1].reshape(dim, 4), t)          # -sum_d <h_d (x) r^_d, t_d>
+    got = -(t * (M[1] @ h[..., None])[..., 0]).sum()
+    assert got.item() == pytest.approx(want.item(), rel=1e-5, abs=1e-5)
+
+
+def test_quate_holonomy_closes_for_the_product_and_not_the_reverse_order():
+    import torch
+    from pykeen.nn import quaternion
+    from rtvm.holonomy_model import cycle_defect, path_transport
+    sec = _secondary()
+    table = quaternion.multiplication_table()
+    g = torch.Generator().manual_seed(2)
+    a, b = torch.randn(2, 4, generator=g), torch.randn(2, 4, generator=g)      # 2 coordinates, unit after scaling
+    a, b = a / a.norm(dim=-1, keepdim=True), b / b.norm(dim=-1, keepdim=True)
+    ab = torch.einsum("di,dj,ijk->dk", a, b, table)                            # a (x) b
+    ba = torch.einsum("di,dj,ijk->dk", b, a, table)                            # b (x) a
+    w = torch.stack([a, b, ab, ba]).reshape(4, -1)
+    T = sec.rotation_table(sec.quate_rotations(w, table))
+    steps = torch.tensor([[0, 1, 8], [0, 1, 8]])                               # step a, then step b; pad = 2R = 8
+    d = cycle_defect(T, path_transport(T, steps), torch.tensor([2, 3]))
+    assert d[0] < 1e-5                                                         # (h (x) a) (x) b = h (x) (a (x) b)
+    assert d[1] > 1e-2                                                         # noncommutative: b (x) a differs
+
+
 def test_s6_with_the_gate_features_is_the_primary_test():
     sec = _secondary()
     rng = np.random.default_rng(5)
