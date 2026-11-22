@@ -2,8 +2,9 @@
 
     python experiments/g2_secondary.py basic --dataset fb15k237      # S2, S7 (FB15k-237 part), S9
     python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline rotate   # S6, RotatE's rotations
+    python experiments/g2_secondary.py s3 --dataset fb15k237         # S3, typed path rules
 
-S3 and S6 with QuatE follow in this file.
+S6 with QuatE follows in this file.
 
 This code lives outside the frozen paths on purpose, so that the test-split guard of
 experiments/g2_gate.py keeps holding. It imports the frozen gate code unchanged, reads the
@@ -252,6 +253,139 @@ def s6_analysis(v2: dict, test: dict, features: dict, n_boot: int = N_BOOT) -> d
     return res
 
 
+# ---------------------------------------------------------------- S3: typed path rules
+
+EST_PER_RELATION = 300      # estimation triples per relation (note of 2026-11-22, second)
+MIN_SUPPORT = 5             # a pattern is rated for r only with at least this many estimation triples
+RULES = ("rule_max", "rule_mean", "rule_rated")
+
+
+def estimation_set(train: np.ndarray, num_relations: int, per_relation: int = EST_PER_RELATION,
+                   seed: int = 0) -> np.ndarray:
+    """Training-edge ids of the estimation triples: for each relation in id order, up to
+    `per_relation` of its training triples, uniform without replacement, one generator."""
+    rng = np.random.default_rng(seed)
+    out = []
+    for r in range(num_relations):
+        idx = np.flatnonzero(train[:, 1] == r)
+        out.append(np.sort(rng.choice(idx, per_relation, replace=False)) if len(idx) > per_relation else idx)
+    return np.concatenate(out).astype(np.int64)
+
+
+def pattern_keys(codes: np.ndarray, train_relations: np.ndarray, num_relations: int) -> np.ndarray:
+    """One integer per sampled path naming its typed pattern, the sequence of (relation,
+    direction) steps from h to t; 0 for an empty path slot. codes (..., MAX_LEN) as saved."""
+    codes = np.asarray(codes, dtype=np.int64)
+    base = 2 * num_relations + 1
+    edge = np.abs(codes) - 1
+    step = np.where(codes != 0, 2 * np.asarray(train_relations)[np.maximum(edge, 0)] + (codes < 0) + 1, 0)
+    key = np.zeros(codes.shape[:-1], dtype=np.int64)
+    for j in range(codes.shape[-1]):
+        key = key * base + step[..., j]
+    return key
+
+
+def _distinct(keys: np.ndarray):
+    """Distinct (row, key) pairs of a (n, K) key array, empty slots dropped."""
+    rows = np.repeat(np.arange(keys.shape[0]), keys.shape[1])
+    flat = keys.reshape(-1)
+    pairs = np.unique(np.stack([rows[flat != 0], flat[flat != 0]], axis=1), axis=0)
+    return pairs[:, 0], pairs[:, 1]
+
+
+def rule_table(keys: np.ndarray, relations: np.ndarray, labels: np.ndarray, num_relations: int,
+               min_support: int = MIN_SUPPORT) -> tuple[np.ndarray, np.ndarray, int]:
+    """Confidence of each rated (relation, pattern): among the estimation triples of r whose
+    sampled paths contain p, the fraction that are positives; rated only with support >= min_support.
+    Returns sorted combined keys, their confidences, and the number of (r, p) pairs seen."""
+    rows, pat = _distinct(keys)
+    base3 = (2 * num_relations + 1) ** 3
+    combined = np.asarray(relations)[rows] * base3 + pat
+    uniq, inv, support = np.unique(combined, return_inverse=True, return_counts=True)
+    positives = np.bincount(inv.reshape(-1), weights=np.asarray(labels, float)[rows], minlength=len(uniq))
+    rated = support >= min_support
+    return uniq[rated], (positives / support)[rated], int(len(uniq))
+
+
+def rule_features(keys: np.ndarray, relations: np.ndarray, table_keys: np.ndarray, table_conf: np.ndarray,
+                  num_relations: int) -> dict:
+    """rule_max, rule_mean over the distinct rated patterns on each triple's paths, and the flag
+    rule_rated; all three 0 when no pattern is rated. keys (n, K); relations (n,)."""
+    n = keys.shape[0]
+    rows, pat = _distinct(keys)
+    combined = np.asarray(relations)[rows] * (2 * num_relations + 1) ** 3 + pat
+    pos = np.searchsorted(table_keys, combined)
+    hit = (pos < len(table_keys)) & (table_keys[np.minimum(pos, len(table_keys) - 1)] == combined)
+    rows, conf = rows[hit], table_conf[pos[hit]]
+    count = np.bincount(rows, minlength=n)
+    mean = np.divide(np.bincount(rows, weights=conf, minlength=n), count, out=np.zeros(n), where=count > 0)
+    mx = np.zeros(n)
+    np.maximum.at(mx, rows, conf)
+    return dict(rule_max=mx, rule_mean=mean, rule_rated=(count > 0).astype(float))
+
+
+def compare(v2: dict, test: dict, base: tuple[str, ...], candidate: tuple[str, ...], extra: dict | None = None,
+            n_boot: int = N_BOOT) -> dict:
+    """Candidate against base combiner, by the primary test's procedure (V2 fit, per-seed pairing,
+    relation bootstrap). extra[split] = dict(pos={name: (n,)}, neg={name: (n, k)}) adds seed-free columns."""
+    extra = extra or {"v2": dict(pos={}, neg={}), "test": dict(pos={}, neg={})}
+    rows, out = {}, dict(seeds={})
+    for s in SEEDS:
+        cols = {split: {part: {**model_columns(d[part], s), **extra[split][part]} for part in ("pos", "neg")}
+                for split, d in (("v2", v2), ("test", test))}
+        out["seeds"][s] = {}
+        for name, names in (("base", base), ("candidate", candidate)):
+            comb, sp, sn = fit_and_score(cols["v2"]["pos"], cols["v2"]["neg"], cols["test"]["pos"],
+                                         cols["test"]["neg"], names)
+            rows[name, s] = masked_rows(sp, sn, np.ones(sn.shape, bool))
+            out["seeds"][s][name] = dict(grouped_auc=float(rows[name, s].mean()), combiner=comb.to_dict())
+    d = np.stack([rows["candidate", s] - rows["base", s] for s in SEEDS])
+    out.update(delta_summary(d, np.asarray(test["relations"]), n_boot), base=list(base), candidate=list(candidate))
+    return out
+
+
+def s3_analysis(v2: dict, test: dict, rules: dict, n_boot: int = N_BOOT) -> dict:
+    """(i) the pre-registered S3: B0' = B0 + rules against B1' = B0' + holonomy;
+    (ii) added on 2026-11-22: B0 against B0'. rules[split] as compare's extra."""
+    b0r = B0 + RULES
+    return dict(holonomy_beyond_rules=compare(v2, test, b0r, b0r + ("holonomy",), rules, n_boot),
+                rules_beyond_b0=compare(v2, test, B0, b0r, rules, n_boot))
+
+
+def build_estimation(d: dict) -> dict:
+    """S3's estimation set with its negatives and sampled paths (note of 2026-11-22, second)."""
+    from rtvm.g2data import TrainGraph, sample_negatives, sample_paths
+    train = d["train"]
+    edges = estimation_set(train, d["num_relations"])
+    pos = train[edges]
+    known = set(map(tuple, train.tolist()))                       # training triples only (not valid or test)
+    neg, fallback = sample_negatives(pos, train, known, d["num_entities"])
+    graph = TrainGraph.from_training(train, d["num_entities"])
+    pos_paths = sample_paths(graph, pos, own_edges=edges)
+    neg_paths = sample_paths(graph, neg.reshape(-1, 3)).reshape(len(pos), neg.shape[1], *pos_paths.shape[1:])
+    return dict(edges=edges, pos=pos, neg=neg, fallback=fallback, pos_paths=pos_paths, neg_paths=neg_paths)
+
+
+def rules_from_estimation(est: dict, train: np.ndarray, num_relations: int) -> tuple[np.ndarray, np.ndarray, int]:
+    m, k = est["neg"].shape[:2]
+    keys = np.concatenate([pattern_keys(est["pos_paths"], train[:, 1], num_relations),
+                           pattern_keys(est["neg_paths"].reshape(m * k, *est["pos_paths"].shape[1:]),
+                                        train[:, 1], num_relations)])
+    relations = np.r_[est["pos"][:, 1], est["neg"].reshape(-1, 3)[:, 1]]
+    labels = np.r_[np.ones(m), np.zeros(m * k)]
+    return rule_table(keys, relations, labels, num_relations)
+
+
+def split_rules(d: dict, table_keys: np.ndarray, table_conf: np.ndarray) -> dict:
+    """compare's extra for one split: rule features of its positives (n,) and negatives (n, k)."""
+    m, k = d["neg"].shape[:2]
+    R = d["num_relations"]
+    pos = rule_features(pattern_keys(d["pos_paths"], d["train"][:, 1], R), d["pos"][:, 1], table_keys, table_conf, R)
+    neg = rule_features(pattern_keys(gate.flat(d["neg_paths"], 2), d["train"][:, 1], R),
+                        gate.flat(d["neg"], 1)[:, 1], table_keys, table_conf, R)
+    return dict(pos=pos, neg={key: v.reshape(m, k) for key, v in neg.items()})
+
+
 # ---------------------------------------------------------------- main
 
 def relation_labels(dataset: str) -> dict[int, str]:
@@ -273,7 +407,7 @@ def reproduce_gate(v2: dict, test: dict, decided: dict) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["basic", "s6"])
+    ap.add_argument("command", choices=["basic", "s6", "s3"])
     ap.add_argument("--dataset", required=True, choices=["fb15k237", "wn18rr"])
     ap.add_argument("--baseline", choices=["rotate"], help="s6: whose relation rotations")
     ap.add_argument("--gate", default=str(ROOT / "runs/g2gate"))
@@ -306,6 +440,41 @@ def main() -> None:
         res["check"]["reproduces_gate"] = True
         res.update(kind="S2, S7 (FB15k-237 part), S9; protocol notes of 2026-11-22; no pass rule", **meta)
         target = out_dir / "basic.json"
+
+    elif args.command == "s3":
+        check = reproduce_gate(v2, test, decided)
+        committed = gate.committed_file(f"saved/g2/{args.dataset}/manifest.json")
+        splits = {split: gate.load_split(args.dataset, split, Path(args.saved), Path(args.data), allow_test=True,
+                                         committed_manifest=committed) for split in ("v2", "test")}
+        for split, assembled in (("v2", v2), ("test", test)):
+            if not np.array_equal(splits[split]["pos"][:, 1], assembled["relations"]):
+                sys.exit(f"{split}: the loaded split and the gate's feature files disagree")
+        d = splits["v2"]
+        cache = out_dir / "s3_estimation.npz"
+        code = dict(secondary_sha256=gate.sha256(Path(__file__)), frozen_tree=state["frozen_tree"],
+                    manifest_sha256=d["manifest_sha256"])
+        est = None
+        if cache.exists():
+            z = np.load(cache)
+            if json.loads(str(z["provenance"])).get("code") == code:
+                est = {key: z[key] for key in ("edges", "pos", "neg", "fallback", "pos_paths", "neg_paths")}
+                print(f"estimation set from {cache.name}", flush=True)
+        if est is None:
+            est = build_estimation(d)
+            gate.save_npz(cache, est, dict(code=code, created=time.strftime("%Y-%m-%d %H:%M:%S")))
+            print(f"estimation set built ({time.time() - t0:.0f} s)", flush=True)
+        keys, conf, n_seen = rules_from_estimation(est, d["train"], d["num_relations"])
+        rules = {split: split_rules(splits[split], keys, conf) for split in ("v2", "test")}
+        pooled = lambda r: float(np.r_[r["pos"]["rule_rated"], r["neg"]["rule_rated"].ravel()].mean())  # noqa: E731
+        res = dict(kind="S3, typed path rules: (i) B0' = B0 + rules against B0' + holonomy (pre-registered); "
+                        "(ii) B0 against B0' (added 2026-11-22); no pass rule",
+                   check=check, **s3_analysis(v2, test, rules),
+                   estimation=dict(n_positives=int(len(est["pos"])), n_negatives=int(est["neg"].shape[0] * est["neg"].shape[1]),
+                                   n_fallback=int(est["fallback"].sum()), relations=int(len(np.unique(est["pos"][:, 1]))),
+                                   pairs_seen=n_seen, pairs_rated=int(len(keys)), min_support=MIN_SUPPORT,
+                                   per_relation=EST_PER_RELATION),
+                   rated_share_pooled={split: pooled(rules[split]) for split in ("v2", "test")}, **meta)
+        target = out_dir / "s3.json"
 
     else:                                                                 # s6
         if args.baseline is None:

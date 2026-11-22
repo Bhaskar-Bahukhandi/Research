@@ -151,6 +151,88 @@ def test_s6_with_the_gate_features_is_the_primary_test():
     assert v2["pos"]["holonomy:0"] is same["v2"][0][0]                        # the inputs are not modified
 
 
+def test_estimation_set_draws_up_to_the_cap_per_relation():
+    sec = _secondary()
+    rng = np.random.default_rng(6)
+    train = np.stack([rng.integers(0, 50, 400), rng.choice(3, 400, p=[0.7, 0.25, 0.05]), rng.integers(0, 50, 400)], 1)
+    edges = sec.estimation_set(train, 4, per_relation=60)
+    counts = np.bincount(train[edges, 1], minlength=4)
+    assert list(counts) == [60, 60, int((train[:, 1] == 2).sum()), 0]   # all of a small relation; none of an absent one
+    assert len(np.unique(edges)) == len(edges)
+    assert np.array_equal(edges, sec.estimation_set(train, 4, per_relation=60))      # deterministic
+
+
+def test_pattern_keys_by_hand():
+    sec = _secondary()
+    train_rel = np.array([0, 1, 2])                    # R = 3, base 7; step = 2 * rel + (backward) + 1
+    codes = np.array([[[1, -2, 0], [0, 0, 0], [3, 0, 0]]])
+    keys = sec.pattern_keys(codes, train_rel, 3)
+    assert keys.tolist() == [[(1 * 7 + 4) * 7, 0, 5 * 49]]
+    # the same pattern through different edges of the same relations gets the same key
+    one = sec.pattern_keys(np.array([[1, -2, 0]]), np.array([0, 1]), 3)        # edge 0 (rel 0) fwd, edge 1 (rel 1) bwd
+    other = sec.pattern_keys(np.array([[2, -1, 0]]), np.array([1, 0]), 3)      # edge 1 (rel 0) fwd, edge 0 (rel 1) bwd
+    assert one.tolist() == other.tolist() == [(1 * 7 + 4) * 7]
+    assert sec.pattern_keys(np.array([[-1, 2, 0]]), np.array([0, 1]), 3).tolist() != one.tolist()   # direction counts
+
+
+def test_rule_table_and_features_by_hand():
+    sec = _secondary()
+    A, B, C = 11, 22, 33                               # pattern keys
+    keys = np.array([[A, A], [A, B], [A, 0], [A, B], [A, B], [B, 0], [C, 0]])   # duplicate A in row 0 counts once
+    relations = np.array([0, 0, 0, 0, 0, 0, 1])
+    labels = np.array([1, 1, 1, 1, 0, 0, 1])
+    tk, tc, seen = sec.rule_table(keys, relations, labels, num_relations=2, min_support=5)
+    base3 = 5 ** 3
+    assert seen == 3 and tk.tolist() == [0 * base3 + A] and tc.tolist() == [0.8]    # B: support 4, C: 1 -> unrated
+    f = sec.rule_features(np.array([[A, B], [B, 0], [0, 0], [A, 0]]), np.array([0, 0, 0, 1]), tk, tc, 2)
+    assert f["rule_max"].tolist() == [0.8, 0, 0, 0] and f["rule_mean"].tolist() == [0.8, 0, 0, 0]
+    assert f["rule_rated"].tolist() == [1, 0, 0, 0]    # a pattern is rated per relation, not globally
+
+
+def test_compare_is_the_primary_test_for_b0_against_b1():
+    sec = _secondary()
+    rng = np.random.default_rng(7)
+    v2, test = synthetic_split(rng, 500, 10, True), synthetic_split(rng, 500, 10, True)
+    primary = primary_test(v2, test, n_boot=200)
+    res = sec.compare(v2, test, sec.B0, sec.B1, n_boot=200)
+    assert res["delta_bar"] == pytest.approx(primary["delta_bar"], abs=1e-15)
+    assert res["ci95"] == pytest.approx(primary["ci95"], abs=1e-15)
+
+
+def test_s3_analysis_sees_an_informative_rule():
+    sec = _secondary()
+    rng = np.random.default_rng(8)
+    v2, test = synthetic_split(rng, 600, 10, False), synthetic_split(rng, 600, 10, False)
+
+    def rules(n, k):
+        good_p, good_n = rng.random(n) < 0.8, rng.random((n, k)) < 0.2
+        return dict(pos=dict(rule_max=good_p * 0.9, rule_mean=good_p * 0.7, rule_rated=np.ones(n)),
+                    neg=dict(rule_max=good_n * 0.9, rule_mean=good_n * 0.7, rule_rated=np.ones((n, k))))
+    res = sec.s3_analysis(v2, test, {"v2": rules(600, 10), "test": rules(600, 10)}, n_boot=200)
+    assert res["rules_beyond_b0"]["ci95"][0] > 0                       # rules carry signal beyond B0
+    assert res["holonomy_beyond_rules"]["ci95"][0] < 0.005             # uninformative holonomy adds nothing
+
+
+def test_build_estimation_on_a_small_graph():
+    sec = _secondary()
+    from rtvm.g2data import decode
+    rng = np.random.default_rng(9)
+    train = np.unique(np.stack([rng.integers(0, 40, 300), rng.integers(0, 3, 300), rng.integers(0, 40, 300)], 1), axis=0)
+    train = train[train[:, 0] != train[:, 2]]
+    d = dict(train=train, num_relations=3, num_entities=40)
+    est = sec.build_estimation(d)
+    assert est["neg"].shape == (len(est["pos"]), 10, 3) and est["pos_paths"].shape == (len(est["pos"]), 32, 3)
+    known = set(map(tuple, train.tolist()))
+    assert not any(tuple(t) in known for t in est["neg"].reshape(-1, 3).tolist())     # filtered against training
+    for i, e in enumerate(est["edges"]):                                            # a triple never supports itself
+        used = {decode(int(c))[0] for c in est["pos_paths"][i].ravel() if c != 0}
+        assert int(e) not in used
+    again = sec.build_estimation(d)
+    assert all(np.array_equal(est[key], again[key]) for key in est)
+    tk, tc, seen = sec.rules_from_estimation(est, train, 3)
+    assert len(tk) <= seen and ((tc >= 0) & (tc <= 1)).all()
+
+
 def test_fallback_mask_changes_only_what_it_should():
     sec = _secondary()
     rng = np.random.default_rng(4)
