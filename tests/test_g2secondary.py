@@ -360,6 +360,81 @@ def test_s4_with_the_gate_structure_is_the_primary_test():
     assert sec.replace_structure(test, other)["pos"]["covered"].sum() == 0 and test["pos"]["covered"].any()
 
 
+def test_known_answers_by_hand():
+    sec = _secondary()
+    known = np.array([[0, 0, 1], [0, 0, 2], [3, 0, 1], [0, 1, 4]])
+    tail = sec.answer_index(known, "tail", 5, 2)
+    rows, cols = sec.known_answers(tail, np.array([0 * 2 + 0, 3 * 2 + 0, 4 * 2 + 1]))  # (0,0,?), (3,0,?), (4,1,?)
+    assert sorted(zip(rows.tolist(), cols.tolist())) == [(0, 1), (0, 2), (1, 1)]
+    head = sec.answer_index(known, "head", 5, 2)
+    rows, cols = sec.known_answers(head, np.array([1 * 2 + 0, 4 * 2 + 1]))                # (?,0,1), (?,1,4)
+    assert sorted(zip(rows.tolist(), cols.tolist())) == [(0, 0), (0, 3), (1, 0)]
+
+
+def test_realistic_ranks_by_hand():
+    sec = _secondary()
+    scores = np.array([[0.5, 0.9, 0.5, 0.1, 0.7], [0.2, 0.2, 0.2, 0.2, 0.2]])
+    # row 0: target 0; entity 1 is a known answer (filtered); 4 scores higher; 2 ties -> 1 + 1 + 0.5
+    # row 1: target 3; every other entity ties -> 1 + 0 + 4 / 2
+    ranks = sec.realistic_ranks(scores, np.array([0, 3]), np.array([0]), np.array([1]))
+    assert ranks.tolist() == [2.5, 3.0]
+
+
+def test_link_prediction_matches_pykeen_realistic_metrics():
+    import torch
+    from pykeen.datasets import Nations
+    from pykeen.evaluation import RankBasedEvaluator
+    from rtvm.baselines import BaselineConfig, build_model
+    sec = _secondary()
+    ds = Nations()
+    net = build_model(BaselineConfig(model="rotate_official", dim=6, seed=3), ds.training)   # untrained: many ties
+    net.eval()
+    train, valid, test = (x.mapped_triples for x in (ds.training, ds.validation, ds.testing))
+    known = torch.cat([train, valid, test]).numpy()
+    tails, heads = sec.baseline_scorers(net)
+    ours = sec.link_prediction(tails, heads, test.numpy(), known, ds.num_entities, ds.num_relations, batch=37)
+    res = RankBasedEvaluator().evaluate(net, test, additional_filter_triples=[train, valid], use_tqdm=False,
+                                        batch_size=64)
+    assert ours["mrr"] == pytest.approx(res.get_metric("both.realistic.inverse_harmonic_mean_rank"), abs=1e-6)
+    assert ours["hits_at_1"] == pytest.approx(res.get_metric("both.realistic.hits_at_1"), abs=1e-6)
+    assert ours["hits_at_10"] == pytest.approx(res.get_metric("both.realistic.hits_at_10"), abs=1e-6)
+    assert ours["n_ranks"] == 2 * len(test)
+
+
+def test_quate_scorers_match_pykeen():
+    import torch
+    from pykeen.datasets import Nations
+    from rtvm.baselines import BaselineConfig, build_model
+    sec = _secondary()
+    ds = Nations()
+    net = build_model(BaselineConfig(model="quate_official", dim=5, regularizer_weight=0.1, seed=2), ds.training)
+    net.eval()
+    tails, heads = sec.quate_scorers(net)
+    h, r, t = np.array([0, 4, 9]), np.array([1, 7, 30]), np.array([2, 11, 13])
+    with torch.no_grad():
+        want_t = net.score_t(torch.as_tensor(np.stack([h, r], 1))).double()
+        want_h = net.score_h(torch.as_tensor(np.stack([r, t], 1))).double()
+    assert torch.allclose(tails(h, r), want_t, atol=1e-5)
+    assert torch.allclose(heads(r, t), want_h, atol=1e-5)
+
+
+def test_holonomy_scorers_are_the_single_triple_score():
+    import torch
+    from rtvm.holonomy_model import HolonomyModel
+    sec = _secondary()
+    model = HolonomyModel(9, 3, n_blocks=2, b=4, rank=1, rotation_init=0.5, generator=torch.Generator().manual_seed(4))
+    tails, heads = sec.holonomy_scorers(model)
+    h, r, t = np.array([1, 5]), np.array([2, 0]), np.array([7, 3])
+    every = torch.arange(9)
+    with torch.no_grad():
+        want_t = torch.stack([-model.single_distance(torch.full((9,), int(a)), torch.full((9,), int(b)), every)
+                              for a, b in zip(h, r)])
+        want_h = torch.stack([-model.single_distance(every, torch.full((9,), int(b)), torch.full((9,), int(c)))
+                              for b, c in zip(r, t)])
+    assert torch.allclose(tails(h, r), want_t.double(), atol=1e-5)
+    assert torch.allclose(heads(r, t), want_h.double(), atol=1e-5)
+
+
 def test_fallback_mask_changes_only_what_it_should():
     sec = _secondary()
     rng = np.random.default_rng(4)

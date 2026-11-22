@@ -7,6 +7,7 @@
     python experiments/g2_secondary.py s4 --dataset fb15k237         # S4, path length
     python experiments/g2_secondary.py s5 --dataset fb15k237         # S5, QuatE in place of RotatE
     python experiments/g2_secondary.py s7wn --dataset wn18rr         # S7, WN18RR part
+    python experiments/g2_secondary.py s8 --dataset fb15k237         # S8, filtered link prediction (also wn18rr)
     python experiments/g2_secondary.py collapse --dataset wn18rr     # rotation collapse check (exploratory)
 
 This code lives outside the frozen paths on purpose, so that the test-split guard of
@@ -373,6 +374,154 @@ def replace_structure(split: dict, struct: dict) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- S8: filtered link prediction
+
+def answer_index(known: np.ndarray, query: str, num_entities: int, num_relations: int):
+    """For tail queries (h, r, ?) or head queries (?, r, t): sorted query keys, CSR starts and the
+    known answers, from every known true triple."""
+    known = np.asarray(known, dtype=np.int64)
+    if query == "tail":
+        keys, answers = known[:, 0] * num_relations + known[:, 1], known[:, 2]
+    else:
+        keys, answers = known[:, 2] * num_relations + known[:, 1], known[:, 0]
+    order = np.lexsort((answers, keys))
+    keys, answers = keys[order], answers[order]
+    uniq, starts = np.unique(keys, return_index=True)
+    return uniq, np.r_[starts, len(keys)], answers
+
+
+def known_answers(index, keys: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(row, entity) pairs of the known answers of each query key (row i = keys[i])."""
+    uniq, starts, answers = index
+    pos = np.searchsorted(uniq, keys)
+    found = (pos < len(uniq)) & (uniq[np.minimum(pos, len(uniq) - 1)] == keys)
+    lo = np.where(found, starts[np.minimum(pos, len(uniq) - 1)], 0)
+    hi = np.where(found, starts[np.minimum(pos, len(uniq) - 1) + 1], 0)
+    count = hi - lo
+    rows = np.repeat(np.arange(len(keys)), count)
+    offsets = np.arange(count.sum()) - np.repeat(np.cumsum(count) - count, count)
+    return rows, answers[np.repeat(lo, count) + offsets]
+
+
+def realistic_ranks(scores, targets: np.ndarray, rows: np.ndarray, cols: np.ndarray) -> np.ndarray:
+    """Filtered realistic ranks: 1 + (# scored higher) + (# tied) / 2, over the candidates that are
+    not known true answers (rows, cols); the target itself is never a competitor."""
+    import torch
+    scores = torch.as_tensor(scores, dtype=torch.float64).clone()
+    idx = torch.arange(scores.shape[0])
+    t = torch.as_tensor(targets, dtype=torch.long)
+    true = scores[idx, t].clone()
+    if np.isnan(true.numpy()).any():
+        raise ValueError("NaN score")
+    scores[torch.as_tensor(rows, dtype=torch.long), torch.as_tensor(cols, dtype=torch.long)] = float("-inf")
+    scores[idx, t] = float("-inf")
+    higher = (scores > true[:, None]).sum(dim=1)
+    tied = (scores == true[:, None]).sum(dim=1)
+    return (1 + higher + 0.5 * tied).double().numpy()
+
+
+def link_prediction(score_tails, score_heads, test: np.ndarray, known: np.ndarray, num_entities: int,
+                    num_relations: int, batch: int = 256) -> dict:
+    """Filtered MRR and Hits@1/10 with realistic ranks over both directions. score_tails(h, r) and
+    score_heads(r, t) return (B, num_entities) scores, higher = more plausible."""
+    test = np.asarray(test, dtype=np.int64)
+    ranks = []
+    for query, fn in (("tail", score_tails), ("head", score_heads)):
+        index = answer_index(known, query, num_entities, num_relations)
+        for s in range(0, len(test), batch):
+            h, r, t = (test[s:s + batch, j] for j in range(3))
+            if query == "tail":
+                scores, keys, targets = fn(h, r), h * num_relations + r, t
+            else:
+                scores, keys, targets = fn(r, t), t * num_relations + r, h
+            rows, cols = known_answers(index, keys)
+            ranks.append(realistic_ranks(scores, targets, rows, cols))
+    ranks = np.concatenate(ranks)
+    return dict(mrr=float(np.mean(1 / ranks)), hits_at_1=float(np.mean(ranks <= 1)),
+                hits_at_10=float(np.mean(ranks <= 10)), n_ranks=int(len(ranks)))
+
+
+def baseline_scorers(net):
+    import torch
+
+    def tails(h, r):
+        with torch.no_grad():
+            return net.score_t(torch.as_tensor(np.stack([h, r], 1), dtype=torch.long)).double()
+
+    def heads(r, t):
+        with torch.no_grad():
+            return net.score_h(torch.as_tensor(np.stack([r, t], 1), dtype=torch.long)).double()
+    return tails, heads
+
+
+def quate_scorers(net):
+    """QuatE's score against every entity without PyKEEN's broadcast einsum (which needs about 8 GB
+    per batch here). The score is -<h (x) r^, t> summed over coordinates (NormalizedQuatEInteraction),
+    i.e. -<M h, t> with M the right-multiplication matrix of r^, and <M h, t> = <h, M^T t>."""
+    import torch
+    with torch.no_grad():
+        ent = net.entity_representations[0]._embeddings.weight.double()          # (E, d * 4)
+        rel = net.relation_representations[0]._embeddings.weight
+        M = quate_rotations(rel, net.interaction.table).double()                # (R, d, 4, 4)
+    E = ent.reshape(ent.shape[0], -1, 4)
+
+    def tails(h, r):
+        with torch.no_grad():
+            q = (M[torch.as_tensor(r)] @ E[torch.as_tensor(h)][..., None])[..., 0]       # (B, d, 4)
+            return -(q.reshape(q.shape[0], -1) @ ent.T)
+
+    def heads(r, t):
+        with torch.no_grad():
+            u = (M[torch.as_tensor(r)].transpose(-1, -2) @ E[torch.as_tensor(t)][..., None])[..., 0]
+            return -(u.reshape(u.shape[0], -1) @ ent.T)
+    return tails, heads
+
+
+def holonomy_scorers(model):
+    """The holonomy model's single-triple score -||U_r psi_h - psi_t|| against every entity; head
+    queries use ||U_r psi_h - psi_t|| = ||psi_h - U_r^T psi_t|| (U_r is orthogonal)."""
+    import torch
+    from rtvm.rotations import block_apply
+    with torch.no_grad():
+        R, psi = model.rotations().double(), model.psi.double()
+
+    def dist(x):
+        return torch.cdist(x, psi, compute_mode="donot_use_mm_for_euclid_dist")
+
+    def tails(h, r):
+        with torch.no_grad():
+            return -dist(block_apply(R[torch.as_tensor(r)], psi[torch.as_tensor(h)]))
+
+    def heads(r, t):
+        with torch.no_grad():
+            return -dist(block_apply(R[torch.as_tensor(r)].transpose(-1, -2), psi[torch.as_tensor(t)]))
+    return tails, heads
+
+
+def s8_models(runs: Path, dataset: str, training) -> dict:
+    """Model name -> seed -> (scorers, run stem), for RotatE, QuatE and the holonomy model."""
+    import torch
+    from rtvm.baselines import BaselineConfig, build_model
+    from rtvm.holonomy_model import HolonomyModel
+    out = {}
+    for name in ("rotate", "quate"):
+        out[name] = {}
+        for s, stem in model_runs_any(runs, dataset, name).items():
+            rec = json.loads(stem.with_suffix(".json").read_text())
+            net = build_model(BaselineConfig(**rec["config"]), training)
+            net.load_state_dict(torch.load(f"{stem}_best.pt", map_location="cpu", weights_only=True))
+            net.eval()
+            out[name][s] = (quate_scorers(net) if name == "quate" else baseline_scorers(net), stem)
+    out["holonomy_single_triple"] = {}
+    for s, stem in gate.model_runs(runs, dataset, "holonomy").items():
+        rec = json.loads(stem.with_suffix(".json").read_text())
+        weights = torch.load(f"{stem}_best.pt", map_location="cpu", weights_only=True)
+        net = HolonomyModel(weights["psi"].shape[0], weights["U"].shape[0], rank=rec["config"]["rank"])
+        net.load_state_dict(weights)
+        out["holonomy_single_triple"][s] = (holonomy_scorers(net), stem)
+    return out
+
+
 # ---------------------------------------------------------------- S3: typed path rules
 
 EST_PER_RELATION = 300      # estimation triples per relation (note of 2026-11-22, second)
@@ -563,7 +712,7 @@ def reproduce_gate(v2: dict, test: dict, decided: dict) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["basic", "s6", "s3", "s4", "s5", "s7wn", "collapse"])
+    ap.add_argument("command", choices=["basic", "s6", "s3", "s4", "s5", "s7wn", "s8", "collapse"])
     ap.add_argument("--dataset", required=True, choices=["fb15k237", "wn18rr"])
     ap.add_argument("--baseline", choices=["rotate", "quate"], help="s6: whose relation rotations")
     ap.add_argument("--gate", default=str(ROOT / "runs/g2gate"))
@@ -605,6 +754,29 @@ def main() -> None:
         res["check"]["reproduces_gate"] = True
         res.update(kind="S2, S7 (FB15k-237 part), S9; protocol notes of 2026-11-22; no pass rule", **meta)
         target = out_dir / "basic.json"
+
+    elif args.command == "s8":
+        from pykeen.datasets import get_dataset
+        committed = gate.committed_file(f"saved/g2/{args.dataset}/manifest.json")
+        d = gate.load_split(args.dataset, "test", Path(args.saved), Path(args.data), allow_test=True,
+                            committed_manifest=committed)
+        valid = get_dataset(dataset=args.dataset).validation.mapped_triples.numpy().astype(np.int64)
+        known = np.concatenate([d["train"], valid, d["pos"]])
+        per_model = {}
+        for name, seeds in s8_models(Path(args.runs), args.dataset, d["training"]).items():
+            per_seed = {}
+            for s, ((tails, heads), stem) in seeds.items():
+                per_seed[s] = dict(run=stem.relative_to(ROOT).as_posix(),
+                                   **link_prediction(tails, heads, d["pos"], known, d["num_entities"], d["num_relations"]))
+                print(f"{name} seed {s}: done ({time.time() - t0:.0f} s)", flush=True)
+            summary = {m: dict(mean=float(np.mean([v[m] for v in per_seed.values()])),
+                               std=float(np.std([v[m] for v in per_seed.values()], ddof=1)))
+                       for m in ("mrr", "hits_at_1", "hits_at_10")}
+            per_model[name] = dict(seeds=per_seed, mean_std_over_seeds=summary)
+        res = dict(kind="S8, filtered link prediction on the test split, realistic ranks, both directions; std "
+                        "over the 3 seeds with ddof = 1; protocol note of 2026-11-22 (fourth); no pass rule",
+                   models=per_model, n_test=int(len(d["pos"])), n_known=int(len(known)), **meta)
+        target = out_dir / "s8.json"
 
     elif args.command == "s4":
         check = reproduce_gate(v2, test, decided)
