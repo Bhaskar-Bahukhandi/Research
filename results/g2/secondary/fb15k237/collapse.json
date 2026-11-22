@@ -1,0 +1,66 @@
+{
+ "kind": "collapse check, exploratory (protocol note of 2026-11-22, second); no split is read",
+ "dataset": "fb15k237",
+ "seeds": {
+  "0": {
+   "run": "trial_04",
+   "rank": 2,
+   "rotation_init": 0.038983487546133865,
+   "trained": {
+    "p10": 0.05901643261313439,
+    "median": 1.3505542278289795,
+    "p90": 2.847447919845581,
+    "mean": 1.5612957614536873
+   },
+   "fresh_at_initial_scale": {
+    "p10": 0.501306676864624,
+    "median": 0.5421689748764038,
+    "p90": 0.5839557528495789,
+    "mean": 0.5433426767210418
+   },
+   "largest_possible": 5.656854249492381,
+   "median_ratio_trained_to_fresh": 2.4910208632592084
+  },
+  "1": {
+   "run": "seed_1",
+   "rank": 2,
+   "rotation_init": 0.038983487546133865,
+   "trained": {
+    "p10": 0.05469699054956437,
+    "median": 1.1411749124526978,
+    "p90": 2.7143566608428955,
+    "mean": 1.488226653355712
+   },
+   "fresh_at_initial_scale": {
+    "p10": 0.501306676864624,
+    "median": 0.5421689748764038,
+    "p90": 0.5839557528495789,
+    "mean": 0.5433426767210418
+   },
+   "largest_possible": 5.656854249492381,
+   "median_ratio_trained_to_fresh": 2.1048325620492156
+  },
+  "2": {
+   "run": "seed_2",
+   "rank": 2,
+   "rotation_init": 0.038983487546133865,
+   "trained": {
+    "p10": 0.04229168146848679,
+    "median": 1.2070616483688354,
+    "p90": 2.9427112102508546,
+    "mean": 1.5247864833500488
+   },
+   "fresh_at_initial_scale": {
+    "p10": 0.501306676864624,
+    "median": 0.5421689748764038,
+    "p90": 0.5839557528495789,
+    "mean": 0.5433426767210418
+   },
+   "largest_possible": 5.656854249492381,
+   "median_ratio_trained_to_fresh": 2.226356918789026
+  }
+ },
+ "head": "02926b86df3810eff1cf220c6ca9ded50fc0af97",
+ "dirty": false,
+ "created": "2026-11-22 14:50:34"
+}

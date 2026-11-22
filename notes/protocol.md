@@ -353,6 +353,39 @@ Each change keeps the original value visible.
   - **Order:** S2, S7 and S9 first, because they reuse the gate's features. Then S6 with RotatE, S3, and S6 with QuatE.
   - **Not covered here:** S1, S4, S5, S8 and S10 keep their specifications and follow later.
   - **Unchanged:** the gate, its decision, and every other part of the protocol.
+- **2026-11-22, third note: results of S2, S3, S6, S7, S9 and the collapse check (FB15k-237; collapse also on WN18RR).** A record, not a change. Approved by me on 22 Nov 2026.
+  - **How they were run:**
+    - each command was committed before it ran: S2, S7 and S9 at `19e15b4`, S6 with RotatE at `1174f45`, S3 at `71ce571`, S6 with QuatE at `3993849`, and the collapse check at the commit just before this note;
+    - each passed the gate's guard (freeze `e7ee642`) and reproduced the gate's per-seed grouped AUCs exactly before computing anything new; S3 and S6 also reproduced Δ̄ and its CI;
+    - the QuatE checkpoints (best trial 8, seeds 1 and 2) were downloaded from the QuatE search's Kaggle output and passed the gate's run checks.
+  - **Records:** `results/g2/secondary/`, summarised in `results/g2/README.md`, with model paths made repository-relative.
+  - **Results:**
+    - **The null is robust.**
+      - Covered subset (S2a): Δ̄ −0.00004, CI −0.00016 to +0.00005.
+      - Pooled AUC (S2b): +0.00003, CI −0.00009 to +0.00016.
+      - Fallback negatives removed (S9a): +0.00001, CI −0.00007 to +0.00008.
+      - By relation (S7): Δ̄ is exactly 0 in 145 of 224 relations, and no relation reaches 0.005 (largest +0.0048).
+    - **Non-linear holonomy hurts slightly.** Decile indicators (S9b) give Δ̄ −0.00102, CI −0.00168 to −0.00045. The fitted decile effects are not monotone: deciles 2–9 lie below decile 1, and decile 10 is back near it.
+    - **Holonomy from the baselines' own rotations does not help (S6).**
+      - RotatE (commutative): Δ̄ −0.00032, CI −0.00055 to −0.00011.
+      - QuatE (noncommutative): Δ̄ −0.00042, CI −0.00086 to −0.00005.
+    - **Typed path rules add information that holonomy does not capture (S3).**
+      - (ii) Rules added to B₀: Δ̄ +0.0107, CI +0.0067 to +0.0157, positive in every seed.
+      - (i) Holonomy added to B₀ + rules: Δ̄ +0.00000, CI −0.00014 to +0.00012.
+      - (ii) was added on 2026-11-22, before any secondary result existed. It has no pass rule, and it is not a G2 result.
+    - **Collapse check (exploratory):** the median ‖U_r − I‖_F, against a fresh draw at the initial scale.
+      - On WN18RR it is 3% of the fresh draw in all three seeds: the rotations collapsed toward the identity.
+      - On FB15k-237 it is 2.1–2.5 times the fresh draw.
+  - **Reading, by the rules fixed in the second note of 2026-11-22:**
+    - FB15k-237 holds path-rule signal beyond RotatE + structure, so the failed gate is not a ceiling of the dataset. Holonomy failed where an explicit rule feature succeeds.
+    - The failure is not explained by the holonomy model's training alone, because RotatE's rotations fail too.
+    - It is not explained by the lack of noncommutativity, because QuatE's rotations fail too.
+  - **Not tested, and for the paper to state only as hypotheses:**
+    - Low-rank capacity: S10, dense rotations, would test this.
+    - Averaging the defect over all sampled cycles, where rules weight each pattern per relation and take the maximum.
+    - Training for cycle consistency rather than for separating true from false.
+  - **Still owed:** S1, S4, S5, S8 and S10, and the WN18RR part of S7.
+  - **Unchanged:** everything in the protocol.
 
 ## G2 (H2) in full
 
