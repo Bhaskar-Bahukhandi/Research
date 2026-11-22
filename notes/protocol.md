@@ -480,6 +480,37 @@ Each change keeps the original value visible.
     - **Before Phase 5:** whether the Stage III potential the solver minimises (plan, Mar 2) is a use of the defect beyond abstention, and so falls under this note's rule.
   - **The proposal is updated to match.** Its "the project succeeds if H2 holds" and "scale up only after H2–H3 hold" contradict this decision, and are reworded in the proposal document.
   - **Unchanged:** every pre-registered rule, threshold and gate, including G2's result.
+- **2026-11-22, seventh note: how the page rotations are chosen (the Phase 3 bake-off).** A decision made before any MetaQA file is downloaded and before any Phase 3 work. It settles the first open choice of the sixth note. Approved by me on 22 Nov 2026.
+  - **The question:** which relation rotations and entity states fill the Phase 3 pages, and so answer questions and give the defect that G4 tests.
+  - **Candidates**, each with 128 real numbers per entity:
+    - **A. RotatE:** the G2 definition (`rotate_official`), complex dimension 64.
+    - **B. Rank-r Cayley blocks:** the holonomy model's rotations (`rtvm.holonomy_model`), d = 128 as two blocks of 64. It is trained on the single-triple loss only: self-adversarial negative sampling on −‖U_r ψ_h − ψ_t‖, with no cycle terms. B tests the proposal's page parametrisation, not the G2 holonomy model.
+    - **C. QuatE:** the G2 definition (`quate_official`), quaternion dimension 32.
+    - Relation parameters differ between candidates; their counts are reported.
+  - **Data:**
+    - The knowledge base `kb.txt` from the MetaQA repository (github.com/yuyuz/MetaQA; one `subject|relation|object` triple per line). Its sha256 and its numbers of entities, relation types and triples go into a manifest committed before any training. No published counts were found, so none are assumed here.
+    - The bake-off reads no MetaQA question file (train, dev or test).
+    - **Split:** no official link-prediction split exists. Duplicates are removed, then a seed-0 shuffle puts 5% of the triples in V_tune, 5% in V_select, and the rest in training. A held-out triple whose head or tail is absent from training goes back to training, and the number moved is reported.
+    - Ranks are filtered against every triple in the knowledge base.
+  - **Tuning, the same for each candidate:**
+    - 20 random-search trials (trial seed 0, model seed 0), scored by filtered MRR on V_tune.
+    - Search spaces and fixed values are those of `configs/g2_rotate.yaml`, `g2_quate.yaml` and `g2_holonomy.yaml`, with three changes: B's rank is searched over {1, 2, 4, 8} and its cycle-term values (α₁, α₂, margin) are dropped; QuatE's number of negatives is 10 (its FB15k-237 value); early stopping uses V_tune MRR (every 10 epochs, patience 5, cap 1,000).
+    - TF32 training and FP32 evaluation, as in G2.
+  - **Selection:**
+    - Each candidate's best trial is seed 0. It is trained again with seeds 1 and 2.
+    - Each of the 9 runs is scored on V_select by filtered MRR with realistic ranks in both directions (the S8 code).
+    - **Rule:** the pages use **RotatE (A)**, unless B or C has a mean V_select MRR at least **0.01** above A's mean, with each of its three seeds above A's mean. If both qualify, the higher mean wins.
+    - Why RotatE is the default: it is the simplest and was the strongest in G2 (S8).
+    - Why 0.01: seed standard deviations of MRR in G2 were 0.001 to 0.013 (S8), and a smaller gain would not pay for a more complex page format.
+  - **Reported but not used for the choice:** Hits@1 and Hits@10, MRR per relation type, B's chosen rank, and training time.
+  - **After the choice:**
+    - The chosen candidate is retrained with its tuned values on every triple of the knowledge base (seed 0), so that no fact is missing from the pages.
+    - The result and the choice are recorded in a dated note before Week 9's work starts.
+    - Week 12's rank sweep runs only if B is chosen.
+  - **Code and compute:**
+    - The trainer for B (single-triple loss on the holonomy model's rotations) is new code outside the frozen paths. It is tested and committed before any training.
+    - The runs go on Kaggle T4s. The cost is set once the knowledge base's size is known.
+  - **Unchanged:** every pre-registered rule, threshold and gate. The MetaQA question splits stay untouched until Phase 3's own experiments.
 
 ## G2 (H2) in full
 
