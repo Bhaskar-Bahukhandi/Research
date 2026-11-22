@@ -318,6 +318,48 @@ def test_s5_with_rotate_features_is_the_primary_test():
     assert "decision" not in res and res["delta_bar"] == primary["delta_bar"] and res["ci95"] == primary["ci95"]
 
 
+def test_keep_paths_by_hand():
+    sec = _secondary()
+    codes = np.array([[[3, 0, 0], [1, -2, 0], [4, 5, -6], [0, 0, 0]]])
+    assert sec.keep_paths(codes, lambda L: L <= 2).tolist() == [[[3, 0, 0], [1, -2, 0], [0, 0, 0], [0, 0, 0]]]
+    assert sec.keep_paths(codes, lambda L: L == 3).tolist() == [[[0, 0, 0], [0, 0, 0], [4, 5, -6], [0, 0, 0]]]
+
+
+def test_restricting_saved_paths_to_length_two_equals_sampling_with_that_cap():
+    # Under the tier rule a sample keeps every path of lengths 1 and 2 unless their tiers overflow,
+    # and then holds no length-3 path: so the length <= 2 part always has min(n1 + n2, K) paths.
+    from rtvm.g2data import TrainGraph, count_paths, sample_paths
+    from rtvm.g2gate import structure_features
+    sec = _secondary()
+    rng = np.random.default_rng(12)
+    hubs = rng.integers(0, 3, 600)                                         # a few hubs make tiers overflow
+    train = np.stack([np.where(rng.random(600) < 0.5, hubs, rng.integers(0, 60, 600)), rng.integers(0, 4, 600),
+                      rng.integers(0, 60, 600)], 1)
+    train = train[train[:, 0] != train[:, 2]]
+    graph = TrainGraph.from_training(train, 60)
+    triples = np.stack([rng.integers(0, 60, 400), rng.integers(0, 4, 400), rng.integers(0, 60, 400)], 1)
+    triples = triples[triples[:, 0] != triples[:, 2]]
+    counts, paths = count_paths(graph, triples), sample_paths(graph, triples)
+    short = sec.keep_paths(paths, lambda L: L <= 2)
+    kept = ((short != 0).sum(-1) > 0).sum(1)
+    assert np.array_equal(kept, np.minimum(counts[:, 0] + counts[:, 1], paths.shape[1]))
+    assert (kept == paths.shape[1]).any() and (kept < paths.shape[1]).any()          # both regimes occur
+    c2 = counts.copy()
+    c2[:, 2] = 0
+    structure_features(triples, c2, short, graph.degree())                # coverage stays consistent
+
+
+def test_s4_with_the_gate_structure_is_the_primary_test():
+    sec = _secondary()
+    rng = np.random.default_rng(13)
+    v2, test = synthetic_split(rng, 400, 10, True), synthetic_split(rng, 400, 10, True)
+    struct = {f"{part}/{name}": test[part][name] for part in ("pos", "neg") for name in sec.STRUCTURE}
+    same = sec.replace_structure(test, struct)
+    assert primary_test(v2, same, n_boot=100)["delta_bar"] == primary_test(v2, test, n_boot=100)["delta_bar"]
+    other = {key: np.zeros_like(v) for key, v in struct.items()}
+    assert sec.replace_structure(test, other)["pos"]["covered"].sum() == 0 and test["pos"]["covered"].any()
+
+
 def test_fallback_mask_changes_only_what_it_should():
     sec = _secondary()
     rng = np.random.default_rng(4)

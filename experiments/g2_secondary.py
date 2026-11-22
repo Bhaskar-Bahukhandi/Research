@@ -4,6 +4,7 @@
     python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline rotate   # S6, RotatE's rotations
     python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline quate    # S6, QuatE's rotations
     python experiments/g2_secondary.py s3 --dataset fb15k237         # S3, typed path rules
+    python experiments/g2_secondary.py s4 --dataset fb15k237         # S4, path length
     python experiments/g2_secondary.py s5 --dataset fb15k237         # S5, QuatE in place of RotatE
     python experiments/g2_secondary.py s7wn --dataset wn18rr         # S7, WN18RR part
     python experiments/g2_secondary.py collapse --dataset wn18rr     # rotation collapse check (exploratory)
@@ -329,6 +330,49 @@ def grouped_deltas(v2: dict, test: dict, groups: dict, n_boot: int = N_BOOT) -> 
     return {g: delta_summary(d[:, mask], rel[mask], n_boot) for g, mask in groups.items() if mask.any()}
 
 
+# ---------------------------------------------------------------- S4: path length
+
+def keep_paths(codes: np.ndarray, keep) -> np.ndarray:
+    """Saved path codes with every path slot whose length fails keep(length) emptied."""
+    codes = np.asarray(codes)
+    lengths = (codes != 0).sum(axis=-1)
+    return np.where((keep(lengths) & (lengths > 0))[..., None], codes, 0).astype(codes.dtype)
+
+
+def holonomy_model_tables(runs: Path, dataset: str) -> dict:
+    """Seed -> (step table, run stem) of the gate's holonomy runs (as experiments/g2_gate.py model_scores)."""
+    import torch
+    from rtvm.holonomy_model import HolonomyModel
+    out = {}
+    for s, stem in gate.model_runs(runs, dataset, "holonomy").items():
+        rec = json.loads(stem.with_suffix(".json").read_text())
+        weights = torch.load(f"{stem}_best.pt", map_location="cpu", weights_only=True)
+        net = HolonomyModel(weights["psi"].shape[0], weights["U"].shape[0], rank=rec["config"]["rank"])
+        net.load_state_dict(weights)
+        with torch.no_grad():
+            out[s] = (net.table(), stem)
+    return out
+
+
+def restricted(d: dict, keep, drop_n3: bool = False) -> dict:
+    """A loaded split whose saved paths keep only lengths passing keep(length); with drop_n3, n3 = 0."""
+    out = dict(d, pos_paths=keep_paths(d["pos_paths"], keep), neg_paths=keep_paths(d["neg_paths"], keep))
+    if drop_n3:
+        for key in ("pos_counts", "neg_counts"):
+            c = np.array(d[key], copy=True)
+            c[..., 2] = 0
+            out[key] = c
+    return out
+
+
+def replace_structure(split: dict, struct: dict) -> dict:
+    """A copy of an assembled split whose structure columns come from g2_gate.structure_and_null output."""
+    out = dict(split, pos=dict(split["pos"]), neg=dict(split["neg"]))
+    for name in STRUCTURE:
+        out["pos"][name], out["neg"][name] = struct[f"pos/{name}"], struct[f"neg/{name}"]
+    return out
+
+
 # ---------------------------------------------------------------- S3: typed path rules
 
 EST_PER_RELATION = 300      # estimation triples per relation (note of 2026-11-22, second)
@@ -519,7 +563,7 @@ def reproduce_gate(v2: dict, test: dict, decided: dict) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["basic", "s6", "s3", "s5", "s7wn", "collapse"])
+    ap.add_argument("command", choices=["basic", "s6", "s3", "s4", "s5", "s7wn", "collapse"])
     ap.add_argument("--dataset", required=True, choices=["fb15k237", "wn18rr"])
     ap.add_argument("--baseline", choices=["rotate", "quate"], help="s6: whose relation rotations")
     ap.add_argument("--gate", default=str(ROOT / "runs/g2gate"))
@@ -561,6 +605,41 @@ def main() -> None:
         res["check"]["reproduces_gate"] = True
         res.update(kind="S2, S7 (FB15k-237 part), S9; protocol notes of 2026-11-22; no pass rule", **meta)
         target = out_dir / "basic.json"
+
+    elif args.command == "s4":
+        check = reproduce_gate(v2, test, decided)
+        committed = gate.committed_file(f"saved/g2/{args.dataset}/manifest.json")
+        splits = {split: gate.load_split(args.dataset, split, Path(args.saved), Path(args.data), allow_test=True,
+                                         committed_manifest=committed) for split in ("v2", "test")}
+        assembled = {"v2": v2, "test": test}
+        for split in ("v2", "test"):
+            if not np.array_equal(splits[split]["pos"][:, 1], assembled[split]["relations"]):
+                sys.exit(f"{split}: the loaded split and the gate's feature files disagree")
+        tables = holonomy_model_tables(Path(args.runs), args.dataset)
+        by_length = {}
+        for k in (1, 2, 3):                                   # (a) cycles of length k + 1
+            feats = {split: {s: holonomy_features(restricted(splits[split], lambda L, k=k: L == k), table)
+                             for s, (table, _) in tables.items()} for split in ("v2", "test")}
+            res_k = s6_analysis(v2, test, feats)
+            res_k["rows_with_a_cycle_pooled"] = {split: float(np.r_[(feats[split][0][0] > 0),
+                                                                    (feats[split][0][1] > 0).ravel()].mean())
+                                                 for split in ("v2", "test")}
+            by_length[f"path_length_{k}"] = res_k
+            print(f"path length {k} done ({time.time() - t0:.0f} s)", flush=True)
+        short = {split: restricted(splits[split], lambda L: L <= 2, drop_n3=True) for split in ("v2", "test")}
+        struct = {split: gate.structure_and_null(short[split], "cpu") for split in ("v2", "test")}   # (b) L <= 2
+        feats = {split: {s: holonomy_features(short[split], table) for s, (table, _) in tables.items()}
+                 for split in ("v2", "test")}
+        l2 = primary_test(replace_holonomy(replace_structure(v2, struct["v2"]), feats["v2"]),
+                          replace_holonomy(replace_structure(test, struct["test"]), feats["test"]))
+        l2.pop("decision")
+        l2["covered_share_pooled"] = {split: float(np.r_[struct[split]["pos/covered"],
+                                                         struct[split]["neg/covered"].ravel()].mean())
+                                      for split in ("v2", "test")}
+        res = dict(kind="S4: (a) holonomy from cycles of one path length, B0 against B0 + it; (b) the whole "
+                        "test with paths of length <= 2 and n3 = 0; protocol note of 2026-11-22 (fourth); no pass rule",
+                   check=check, by_length=by_length, length_at_most_2=l2, **meta)
+        target = out_dir / "s4.json"
 
     elif args.command in ("s5", "s7wn"):
         check = reproduce_gate(v2, test, decided)
