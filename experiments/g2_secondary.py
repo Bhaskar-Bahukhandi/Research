@@ -8,6 +8,7 @@
     python experiments/g2_secondary.py s5 --dataset fb15k237         # S5, QuatE in place of RotatE
     python experiments/g2_secondary.py s7wn --dataset wn18rr         # S7, WN18RR part
     python experiments/g2_secondary.py s8 --dataset fb15k237         # S8, filtered link prediction (also wn18rr)
+    python experiments/g2_secondary.py s10 --dataset fb15k237        # S10, after experiments/g2_s10.py
     python experiments/g2_secondary.py collapse --dataset wn18rr     # rotation collapse check (exploratory)
 
 This code lives outside the frozen paths on purpose, so that the test-split guard of
@@ -441,16 +442,19 @@ def link_prediction(score_tails, score_heads, test: np.ndarray, known: np.ndarra
                 hits_at_10=float(np.mean(ranks <= 10)), n_ranks=int(len(ranks)))
 
 
-def baseline_scorers(net):
+def baseline_scorers(net, slice_size: int = 2048):
+    """PyKEEN's score_t / score_h against every entity, in slices of `slice_size` candidates: RotatE
+    builds a (batch x candidates x dim) complex tensor, and unsliced on WN18RR (40,559 entities) that
+    exhausted this PC's memory on 2026-11-22. Slicing changes no score."""
     import torch
 
     def tails(h, r):
         with torch.no_grad():
-            return net.score_t(torch.as_tensor(np.stack([h, r], 1), dtype=torch.long)).double()
+            return net.score_t(torch.as_tensor(np.stack([h, r], 1), dtype=torch.long), slice_size=slice_size).double()
 
     def heads(r, t):
         with torch.no_grad():
-            return net.score_h(torch.as_tensor(np.stack([r, t], 1), dtype=torch.long)).double()
+            return net.score_h(torch.as_tensor(np.stack([r, t], 1), dtype=torch.long), slice_size=slice_size).double()
     return tails, heads
 
 
@@ -519,6 +523,31 @@ def s8_models(runs: Path, dataset: str, training) -> dict:
         net = HolonomyModel(weights["psi"].shape[0], weights["U"].shape[0], rank=rec["config"]["rank"])
         net.load_state_dict(weights)
         out["holonomy_single_triple"][s] = (holonomy_scorers(net), stem)
+    return out
+
+
+# ---------------------------------------------------------------- S10: dense rotations
+
+def dense_runs(s10_runs: Path) -> dict:
+    """Seed -> (step table, run stem, record, model) of the S10 runs (experiments/g2_s10.py), each
+    checked: complete, seed s, the committed config, and the best trial's values at rank 32."""
+    import torch
+    import g2_s10
+    from rtvm.g2search import CONFIGS, file_sha256
+    from rtvm.holonomy_model import HolonomyModel
+    best, values = g2_s10.dense_values()
+    out = {}
+    for s in SEEDS:
+        stem = Path(s10_runs) / g2_s10.DATASET / "holonomy_dense" / f"seed_{s}"
+        rec = json.loads(stem.with_suffix(".json").read_text())
+        if not rec.get("complete") or rec.get("seed") != s or rec.get("values") != values or \
+                rec.get("best_trial") != best or rec.get("config_sha256") != file_sha256(ROOT / CONFIGS["holonomy"]):
+            sys.exit(f"{stem}: not a complete S10 run with seed {s} and trial {best}'s values at rank 32")
+        weights = torch.load(f"{stem}_best.pt", map_location="cpu", weights_only=True)
+        net = HolonomyModel(weights["psi"].shape[0], weights["U"].shape[0], rank=values["rank"])
+        net.load_state_dict(weights)
+        with torch.no_grad():
+            out[s] = (net.table(), stem, rec, net)
     return out
 
 
@@ -712,7 +741,8 @@ def reproduce_gate(v2: dict, test: dict, decided: dict) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["basic", "s6", "s3", "s4", "s5", "s7wn", "s8", "collapse"])
+    ap.add_argument("command", choices=["basic", "s6", "s3", "s4", "s5", "s7wn", "s8", "s10", "collapse"])
+    ap.add_argument("--s10-runs", default=str(ROOT / "runs/g2s10"), help="s10: output of experiments/g2_s10.py")
     ap.add_argument("--dataset", required=True, choices=["fb15k237", "wn18rr"])
     ap.add_argument("--baseline", choices=["rotate", "quate"], help="s6: whose relation rotations")
     ap.add_argument("--gate", default=str(ROOT / "runs/g2gate"))
@@ -754,6 +784,34 @@ def main() -> None:
         res["check"]["reproduces_gate"] = True
         res.update(kind="S2, S7 (FB15k-237 part), S9; protocol notes of 2026-11-22; no pass rule", **meta)
         target = out_dir / "basic.json"
+
+    elif args.command == "s10":
+        if args.dataset != "fb15k237":
+            sys.exit("S10 is on FB15k-237 only")
+        check = reproduce_gate(v2, test, decided)
+        runs = dense_runs(Path(args.s10_runs))
+        committed = gate.committed_file(f"saved/g2/{args.dataset}/manifest.json")
+        feats, sources, collapse = {"v2": {}, "test": {}}, {}, {}
+        for split, assembled in (("v2", v2), ("test", test)):
+            d = gate.load_split(args.dataset, split, Path(args.saved), Path(args.data), allow_test=True,
+                                committed_manifest=committed)
+            if not np.array_equal(d["pos"][:, 1], assembled["relations"]):
+                sys.exit(f"{split}: the loaded split and the gate's feature files disagree")
+            for s, (table, stem, rec, net) in runs.items():
+                feats[split][s] = holonomy_features(d, table)
+        for s, (table, stem, rec, net) in runs.items():
+            norms = rotation_norms(net)
+            sources[f"holonomy_dense:{s}"] = dict(source=stem.relative_to(ROOT).as_posix() if stem.is_relative_to(ROOT)
+                                                  else stem.name, weights_sha256=gate.sha256(Path(f"{stem}_best.pt")),
+                                                  parameters=rec["parameters"], best_v1_auc=rec["best_v1_auc"],
+                                                  best_epoch=rec["best_epoch"], epochs_run=rec["epochs_run"])
+            collapse[s] = dict(median=float(np.median(norms)), p10=float(np.quantile(norms, 0.1)),
+                               p90=float(np.quantile(norms, 0.9)), largest_possible=float(np.sqrt(8 * 2 * 32)))
+        res = dict(kind="S10, dense rotations (rank 32, 3.80M parameters, outside the 2.0M budget): the primary "
+                        "test with the dense model's holonomy; protocol note of 2026-11-22 (fourth); no pass rule",
+                   check=check, result=s6_analysis(v2, test, feats), dense_runs=sources, collapse=collapse,
+                   rank2_gate=dict(delta_bar=decided["delta_bar"], ci95=decided["ci95"]), **meta)
+        target = out_dir / "s10.json"
 
     elif args.command == "s8":
         from pykeen.datasets import get_dataset

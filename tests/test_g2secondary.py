@@ -401,6 +401,19 @@ def test_link_prediction_matches_pykeen_realistic_metrics():
     assert ours["n_ranks"] == 2 * len(test)
 
 
+def test_sliced_baseline_scores_equal_unsliced():
+    import torch
+    from pykeen.datasets import Nations
+    from rtvm.baselines import BaselineConfig, build_model
+    sec = _secondary()
+    net = build_model(BaselineConfig(model="rotate_official", dim=6, seed=5), Nations().training)
+    net.eval()
+    h, r, t = np.array([0, 3, 8]), np.array([2, 9, 40]), np.array([1, 5, 13])
+    sliced, whole = sec.baseline_scorers(net, slice_size=4), sec.baseline_scorers(net, slice_size=None)
+    assert torch.allclose(sliced[0](h, r), whole[0](h, r), atol=1e-6)
+    assert torch.allclose(sliced[1](r, t), whole[1](r, t), atol=1e-6)
+
+
 def test_quate_scorers_match_pykeen():
     import torch
     from pykeen.datasets import Nations
