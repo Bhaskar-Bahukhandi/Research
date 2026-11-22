@@ -386,6 +386,43 @@ Each change keeps the original value visible.
     - Training for cycle consistency rather than for separating true from false.
   - **Still owed:** S1, S4, S5, S8 and S10, and the WN18RR part of S7.
   - **Unchanged:** everything in the protocol.
+- **2026-11-22, fourth note (none of these analyses has been computed): how S1, S4, S5, S7 (WN18RR part), S8 and S10 are computed.** Approved by me on 22 Nov 2026.
+  - **Shared rules:** as in the second note of 2026-11-22.
+    - The code lives outside the frozen paths, and outputs go to `runs/g2secondary/`.
+    - Combiners are fitted on V₂, with the primary relation bootstrap.
+    - No analysis here has a pass rule.
+    - FB15k-237 only, unless stated.
+  - **S1, WN18RR:** the gate's own procedure, `g2_gate.py features` then `decide --dataset wn18rr`.
+    - It writes `runs/g2gate/wn18rr/gate.json` once.
+    - It uses the WN18RR RotatE checkpoints (best trial 8, seeds 1 and 2), downloaded from the RotatE search's final Kaggle output.
+    - Its decision label is reported as S1's result, with the CI's width stated (11 relations). It is not a gate. S11 stays FB15k-237 only.
+  - **S7, WN18RR part:**
+    - Δ̄ separately for the test positives whose exact reverse (t, r, h) is a training triple, and for the rest.
+    - Each with the relation bootstrap restricted to that group's positives, and its count of positives.
+  - **S5:** QuatE's `score_hrt` takes RotatE's place in both combiners: B₀ᵠ = structure + QuatE, B₁ᵠ = B₀ᵠ + holonomy.
+    - Seed s uses QuatE run s and holonomy run s.
+    - QuatE's features are computed as the gate computes RotatE's (`rtvm.baselines.score_triples`, strict FP32).
+  - **S4:**
+    - **(a) By path length:** for k = 1, 2, 3 (cycles of length 2, 3, 4), holonomyₖ is the mean defect over the triple's sampled cycles whose path has length k, and 0 when it has none.
+      - Each is tested as B₀ against B₀ + holonomyₖ.
+      - B₀'s length shares already tell the combiner when a length is missing.
+    - **(b) The whole test with L ≤ 2:** every path feature is recomputed from the saved sample restricted to paths of length ≤ 2, and n₃ is set to 0. This covers structure, covered flag, null holonomy and holonomy.
+      - This equals sampling with L ≤ 2. Under the tier rule, a tier taken whole uses no random numbers, so a sample that reached length 3 holds every path of lengths 1 and 2. A sample whose length-2 tier overflowed holds no length-3 path.
+      - Then B₀ against B₁, as in the primary test.
+  - **S8, filtered link prediction, test split, both datasets:**
+    - **Models:** RotatE, QuatE, and the holonomy model's single-triple score −‖U_r ψ_h − ψ_t‖.
+    - **Scoring:** each test triple is scored against every entity, for head and for tail. Other known true triples (train, validation, test) are filtered out.
+    - **Ranks:** realistic, the mean of the optimistic and pessimistic ranks.
+    - **Reported:** MRR, Hits@1 and Hits@10 over both directions, per seed and as the mean ± std.
+    - **Comparison:** with published values, stating the dimensions (FB15k-237: RotatE 68, QuatE 34; WN18RR: 64, 32), which are far below the papers'.
+    - The WN18RR QuatE checkpoints (best trial 13, seeds 1 and 2) are downloaded first.
+  - **S10, dense rotations, FB15k-237:**
+    - **Model:** the holonomy model at rank 32. Its generator U Vᵀ − V Uᵀ then has full rank 64 in each block, and its parameter count is exactly the 3.80M of the note of 2026-11-06.
+    - **Settings:** every other value is the best trial's (trial 4), including `rotation_init`. There is no new search: this tests capacity at fixed settings and is stated as such. The size difference (3.80M against 1.98M) is stated.
+    - **Training:** seeds 0, 1 and 2 under the shared rules (V₁ early stopping, 1,000-epoch cap, TF32 training, FP32 evaluation), on Kaggle T4s, from a committed script outside the frozen paths.
+    - **Test:** the primary test with the dense model's holonomy in place of the rank-2 model's. The collapse check is also reported for it.
+  - **Order:** S1 and S7 (WN18RR), S5, S4, S8, then S10.
+  - **Unchanged:** everything in the protocol.
 
 ## G2 (H2) in full
 
