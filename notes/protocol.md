@@ -460,6 +460,26 @@ Each change keeps the original value visible.
   - **Still open, for the paper to state only as hypotheses:** averaging the defect over all sampled cycles (rules weight each pattern per relation and take the maximum), and training for cycle consistency rather than for separating true from false.
   - **Owed:** nothing. Every secondary analysis listed in the G2 section has now been run.
   - **Unchanged:** everything in the protocol.
+- **2026-11-22, sixth note: direction after the failed G2.** A decision, made before any Phase 3 work or result exists. Approved by me on 22 Nov 2026.
+  - **Decision:** the project follows the day-by-day plan as written, and the 100M model is still built.
+    - The alternative considered and not chosen: a narrower project (the G2 negative result, then G4 as the deciding test before any scaling).
+    - The plan's rule for a failed gate applies: "A failed gate changes what goes into the 100M model, not whether it gets built."
+  - **What the plan's G2 row requires, and how it is applied:**
+    - **"Keep it as a negative result for the report."**
+      - G2 and every secondary analysis are reported, as recorded in the notes of 2026-11-22.
+      - The Phase 2 report (plan, Week 8) is still owed.
+    - **"RotatE-style scoring replaces holonomy for ranking."** From this note on, no ranking in the project uses the holonomy defect. That covers answer candidates, retrieved pages, and any reported Hits@k or MRR.
+      - First use: Phase 3, Week 10 ("ranking candidates by defect") becomes ranking by a RotatE-style distance −‖h ∘ r − t‖ after applying the predicted relations.
+      - The holonomy model's own single-triple score (S8: MRR 0.096 on FB15k-237, against RotatE's 0.311) is not used for ranking either.
+    - **"The defect is kept only if it still helps abstention."** The defect stays in the pipeline for one purpose only: deciding whether to emit or abstain. G4 (H3) decides whether it stays at all.
+      - If H3 fails at G4 (the defect gate does not lower unsupported claims below its abstention baseline), the defect is dropped and the 100M model has no consistency gate. This is separate from the plan's G4 row, which covers a weak parser (H4). Its ablation "no consistency gate" (plan, Apr 14) is then the model as built.
+  - **Open choices, each fixed in its own dated note before the work it affects starts:**
+    - **Before Phase 3 (Week 9):** which parametrisation supplies the page rotations and entity states. One option is RotatE's (per-dimension 2 × 2 rotations); the other is the holonomy model's rank-r rotations, scored RotatE-style. Week 12's rank sweep r ∈ {1, 2, 4, 8} applies only to the second. Evidence so far, from FB15k-237 at the 2.0M budget, favours RotatE's (S8).
+    - **Before Phase 3's experiments:** the blanks of G3 (k in recall@k; the Hits@1 margin against baseline B).
+    - **Before Phase 4:** the blanks of G4. Also whether G4 compares the defect against a path-rule abstention score as well as max-softmax. S3 found typed path rules carry signal the defect does not.
+    - **Before Phase 5:** whether the Stage III potential the solver minimises (plan, Mar 2) is a use of the defect beyond abstention, and so falls under this note's rule.
+  - **The proposal is updated to match.** Its "the project succeeds if H2 holds" and "scale up only after H2–H3 hold" contradict this decision, and are reworded in the proposal document.
+  - **Unchanged:** every pre-registered rule, threshold and gate, including G2's result.
 
 ## G2 (H2) in full
 
