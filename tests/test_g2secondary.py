@@ -271,6 +271,20 @@ def test_build_estimation_on_a_small_graph():
     assert len(tk) <= seen and ((tc >= 0) & (tc <= 1)).all()
 
 
+@pytest.mark.parametrize("rank", [1, 2, 4])
+def test_rotation_norms_are_zero_at_identity_and_bounded_by_the_rank(rank):
+    import torch
+    from rtvm.holonomy_model import HolonomyModel
+    sec = _secondary()
+    still = HolonomyModel(3, 5, n_blocks=2, b=16, rank=rank, rotation_init=0.0)
+    assert np.allclose(sec.rotation_norms(still), 0)
+    wild = HolonomyModel(3, 50, n_blocks=2, b=16, rank=rank, rotation_init=30.0,
+                         generator=torch.Generator().manual_seed(0))
+    norms = sec.rotation_norms(wild)
+    bound = np.sqrt(8 * 2 * rank)                       # 2 blocks x rank planes, each at most 8 in ||R - I||^2
+    assert (norms <= bound * (1 + 1e-5)).all() and norms.max() > 0.5 * bound     # float32 rounding at the bound
+
+
 def test_fallback_mask_changes_only_what_it_should():
     sec = _secondary()
     rng = np.random.default_rng(4)

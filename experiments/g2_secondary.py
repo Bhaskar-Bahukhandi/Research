@@ -4,6 +4,7 @@
     python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline rotate   # S6, RotatE's rotations
     python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline quate    # S6, QuatE's rotations
     python experiments/g2_secondary.py s3 --dataset fb15k237         # S3, typed path rules
+    python experiments/g2_secondary.py collapse --dataset wn18rr     # rotation collapse check (exploratory)
 
 This code lives outside the frozen paths on purpose, so that the test-split guard of
 experiments/g2_gate.py keeps holding. It imports the frozen gate code unchanged, reads the
@@ -411,6 +412,42 @@ def split_rules(d: dict, table_keys: np.ndarray, table_conf: np.ndarray) -> dict
     return dict(pos=pos, neg={key: v.reshape(m, k) for key, v in neg.items()})
 
 
+# ---------------------------------------------------------------- collapse check (exploratory)
+
+def rotation_norms(model) -> np.ndarray:
+    """||U_r - I||_F per relation over the whole block-diagonal rotation."""
+    import torch
+    with torch.no_grad():
+        R = model.rotations()
+        return (R - torch.eye(R.shape[-1])).flatten(1).norm(dim=1).double().numpy()
+
+
+def collapse_check(runs: Path, dataset: str) -> dict:
+    """For the holonomy model's best trial (seed 0) and its seed runs: the distribution over
+    relations of ||U_r - I||_F, against a fresh draw at the run's initial scale (generator
+    seed 0) and the largest value its rank allows (each block rotates `rank` planes, and one
+    plane contributes at most 8 to the squared norm). No validation or test data is used."""
+    import torch
+    from rtvm.holonomy_model import HolonomyModel
+    q = lambda x: dict(p10=float(np.quantile(x, 0.1)), median=float(np.median(x)),  # noqa: E731
+                       p90=float(np.quantile(x, 0.9)), mean=float(np.mean(x)))
+    out = {}
+    for s, stem in gate.model_runs(runs, dataset, "holonomy").items():
+        cfg = json.loads(stem.with_suffix(".json").read_text())["config"]
+        weights = torch.load(f"{stem}_best.pt", map_location="cpu", weights_only=True)
+        n_ent, n_rel = weights["psi"].shape[0], weights["U"].shape[0]
+        n_blocks = weights["U"].shape[1]
+        trained = HolonomyModel(n_ent, n_rel, rank=cfg["rank"], rotation_init=cfg["rotation_init"])
+        trained.load_state_dict(weights)
+        fresh = HolonomyModel(n_ent, n_rel, rank=cfg["rank"], rotation_init=cfg["rotation_init"],
+                              generator=torch.Generator().manual_seed(0))
+        t, f = rotation_norms(trained), rotation_norms(fresh)
+        out[s] = dict(run=stem.name, rank=cfg["rank"], rotation_init=cfg["rotation_init"],
+                      trained=q(t), fresh_at_initial_scale=q(f), largest_possible=float(np.sqrt(8 * n_blocks * cfg["rank"])),
+                      median_ratio_trained_to_fresh=float(np.median(t) / np.median(f)))
+    return out
+
+
 # ---------------------------------------------------------------- main
 
 def relation_labels(dataset: str) -> dict[int, str]:
@@ -432,7 +469,7 @@ def reproduce_gate(v2: dict, test: dict, decided: dict) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["basic", "s6", "s3"])
+    ap.add_argument("command", choices=["basic", "s6", "s3", "collapse"])
     ap.add_argument("--dataset", required=True, choices=["fb15k237", "wn18rr"])
     ap.add_argument("--baseline", choices=["rotate", "quate"], help="s6: whose relation rotations")
     ap.add_argument("--gate", default=str(ROOT / "runs/g2gate"))
@@ -442,6 +479,15 @@ def main() -> None:
     ap.add_argument("--out", default=str(ROOT / "runs/g2secondary"))
     args = ap.parse_args()
     gate_dir, out_dir = Path(args.gate) / args.dataset, Path(args.out) / args.dataset
+    if args.command == "collapse":                                        # checkpoints only: no split is read
+        out_dir.mkdir(parents=True, exist_ok=True)
+        state = gate.code_state()
+        res = dict(kind="collapse check, exploratory (protocol note of 2026-11-22, second); no split is read",
+                   dataset=args.dataset, seeds=collapse_check(Path(args.runs), args.dataset), head=state["head"],
+                   dirty=bool(gate.git("status", "--porcelain")), created=time.strftime("%Y-%m-%d %H:%M:%S"))
+        gate.write_json(out_dir / "collapse.json", res)
+        print(f"wrote {out_dir / 'collapse.json'}")
+        return
     freeze = gate.check_test_allowed()
     gate_json = gate_dir / "gate.json"
     if not gate_json.exists():
