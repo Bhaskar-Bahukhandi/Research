@@ -102,6 +102,55 @@ def test_basic_analyses_reproduce_the_primary_test():
     assert len(res["s9_binned"]["per_seed"][0]["log_odds_vs_decile1"]) == 9
 
 
+def test_rotate_rotations_act_as_the_rotate_score():
+    import torch
+    sec = _secondary()
+    gamma, dim = 9.0, 5
+    g = torch.Generator().manual_seed(0)
+    w = (torch.rand(3, dim, generator=g) - 0.5) * 2 * (gamma + 2) / dim       # RotatE's init range
+    R = sec.rotate_rotations(w, gamma, dim)                                   # (3, dim, 2, 2)
+    assert R.shape == (3, dim, 2, 2)
+    assert torch.allclose(R @ R.transpose(-1, -2), torch.eye(2).expand(3, dim, 2, 2), atol=1e-6)
+    h = torch.complex(torch.randn(dim, generator=g), torch.randn(dim, generator=g))
+    theta = w[1] * (np.pi / ((gamma + 2) / dim))
+    want = h * torch.polar(torch.ones(dim), theta)                            # PhaseRotatEInteraction's h * exp(i theta)
+    got = (R[1] @ torch.stack([h.real, h.imag], -1)[..., None])[..., 0]
+    assert torch.allclose(got, torch.stack([want.real, want.imag], -1), atol=1e-6)
+
+
+def test_rotate_holonomy_is_zero_exactly_when_phases_compose():
+    import torch
+    from rtvm.holonomy_model import cycle_defect, path_transport
+    sec = _secondary()
+    gamma, dim = 9.0, 4
+    a, b = torch.tensor([0.3, -1.1, 0.7, 0.2]), torch.tensor([0.5, 0.4, -0.9, 1.0])
+    w = torch.stack([a, b, a + b, a - b])               # r2 = a then b; r3 = a then b backwards
+    table = sec.rotation_table(sec.rotate_rotations(w, gamma, dim))           # [U_0..U_3, U_0^T..U_3^T, I]
+    pad = 8
+    steps = torch.tensor([[0, 1, pad], [0, 4 + 1, pad], [0, 1, pad]])
+    closing = torch.tensor([2, 3, 3])
+    d = cycle_defect(table, path_transport(table, steps), closing)
+    assert d[0] < 1e-5 and d[1] < 1e-5                                         # cycles that close
+    phi = ((a + b) - (a - b)) * (np.pi / ((gamma + 2) / dim))                  # the third does not
+    assert d[2].item() == pytest.approx(torch.sqrt((4 - 4 * torch.cos(phi)).sum()).item(), rel=1e-5)
+
+
+def test_s6_with_the_gate_features_is_the_primary_test():
+    sec = _secondary()
+    rng = np.random.default_rng(5)
+    v2, test = synthetic_split(rng, 500, 10, True), synthetic_split(rng, 500, 10, True)
+    same = {split: {s: (d["pos"][f"holonomy:{s}"], d["neg"][f"holonomy:{s}"]) for s in (0, 1, 2)}
+            for split, d in (("v2", v2), ("test", test))}
+    res = sec.s6_analysis(v2, test, same, n_boot=200)
+    primary = primary_test(v2, test, n_boot=200)
+    assert "decision" not in res
+    assert res["delta_bar"] == primary["delta_bar"] and res["ci95"] == primary["ci95"]
+    noise = {split: {s: (rng.normal(size=500), rng.normal(size=(500, 10))) for s in (0, 1, 2)}
+             for split in ("v2", "test")}
+    assert sec.s6_analysis(v2, test, noise, n_boot=200)["delta_bar"] < primary["delta_bar"]
+    assert v2["pos"]["holonomy:0"] is same["v2"][0][0]                        # the inputs are not modified
+
+
 def test_fallback_mask_changes_only_what_it_should():
     sec = _secondary()
     rng = np.random.default_rng(4)

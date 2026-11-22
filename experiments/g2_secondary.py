@@ -1,8 +1,9 @@
 """G2 secondary analyses, as fixed in the protocol notes of 2026-11-22 (second note).
 
     python experiments/g2_secondary.py basic --dataset fb15k237      # S2, S7 (FB15k-237 part), S9
+    python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline rotate   # S6, RotatE's rotations
 
-S3 and S6 follow in this file.
+S3 and S6 with QuatE follow in this file.
 
 This code lives outside the frozen paths on purpose, so that the test-split guard of
 experiments/g2_gate.py keeps holding. It imports the frozen gate code unchanged, reads the
@@ -34,7 +35,7 @@ sys.path.insert(0, str(ROOT / "experiments"))
 
 import g2_gate as gate  # noqa: E402
 from rtvm.g2gate import (B0, B1, BOOT_SEED, N_BOOT, STRUCTURE, feature_matrix, fit_combiner,  # noqa: E402
-                         relation_bootstrap)
+                         primary_test, relation_bootstrap, rotation_table, triple_holonomy)
 
 SEEDS = (0, 1, 2)
 POOLED_BOOT = 1_000         # S2(b): the first 1,000 rows of the primary resample matrix
@@ -200,6 +201,57 @@ def basic_analyses(v2: dict, test: dict, fallback: np.ndarray, relation_names: d
     return out
 
 
+# ---------------------------------------------------------------- S6: holonomy from the baselines' rotations
+
+def rotate_rotations(relation_weights, gamma: float, dim: int):
+    """RotatE's relations as block rotations, (R, dim, 2, 2): phase theta = r * pi / range with
+    range = (gamma + 2) / dim (rtvm.baselines.build_model), each coordinate the 2 x 2 rotation
+    [[cos, -sin], [sin, cos]] acting on (Re, Im), i.e. h * exp(i theta) as in the score."""
+    import torch
+    theta = torch.as_tensor(relation_weights, dtype=torch.float32) * (np.pi / ((gamma + 2.0) / dim))
+    c, s = torch.cos(theta), torch.sin(theta)
+    return torch.stack([torch.stack([c, -s], -1), torch.stack([s, c], -1)], -2)
+
+
+def baseline_tables(runs: Path, dataset: str, baseline: str) -> dict:
+    """Seed -> (step table, run stem) of the baseline's own relation rotations (S6)."""
+    import torch
+    out = {}
+    for s, stem in gate.model_runs(runs, dataset, baseline).items():
+        rec = json.loads(stem.with_suffix(".json").read_text())
+        weights = torch.load(f"{stem}_best.pt", map_location="cpu", weights_only=True)
+        if baseline == "rotate":
+            R = rotate_rotations(weights["relation_representations.0._embeddings.weight"],
+                                 rec["config"]["gamma"], rec["config"]["dim"])
+        else:
+            raise ValueError(f"S6 for {baseline!r} is not implemented yet")
+        out[s] = (rotation_table(R), stem)
+    return out
+
+
+def holonomy_features(d: dict, table) -> tuple[np.ndarray, np.ndarray]:
+    """The triple holonomy score of a split's positives (n,) and negatives (n, k), as the gate computes it."""
+    m, k = d["neg"].shape[:2]
+    pos, _ = triple_holonomy(table, d["pos"][:, 1], gate.steps(d, d["pos_paths"]))
+    neg, _ = triple_holonomy(table, gate.flat(d["neg"], 1)[:, 1], gate.steps(d, gate.flat(d["neg_paths"], 2)))
+    return pos, neg.reshape(m, k)
+
+
+def replace_holonomy(split: dict, features: dict) -> dict:
+    """A copy of an assembled split whose holonomy:<s> columns are replaced by features[s] = (pos, neg)."""
+    out = dict(split, pos=dict(split["pos"]), neg=dict(split["neg"]))
+    for s, (p, n) in features.items():
+        out["pos"][f"holonomy:{s}"], out["neg"][f"holonomy:{s}"] = p, n
+    return out
+
+
+def s6_analysis(v2: dict, test: dict, features: dict, n_boot: int = N_BOOT) -> dict:
+    """B0 against B0 + the baseline-rotation holonomy, by the primary test's procedure; no pass rule."""
+    res = primary_test(replace_holonomy(v2, features["v2"]), replace_holonomy(test, features["test"]), n_boot=n_boot)
+    res.pop("decision")                                   # S6 has no pass rule (note of 2026-11-22, second)
+    return res
+
+
 # ---------------------------------------------------------------- main
 
 def relation_labels(dataset: str) -> dict[int, str]:
@@ -207,11 +259,27 @@ def relation_labels(dataset: str) -> dict[int, str]:
     return {int(i): str(lbl) for lbl, i in get_dataset(dataset=dataset).training.relation_to_id.items()}
 
 
+def reproduce_gate(v2: dict, test: dict, decided: dict) -> dict:
+    """The primary test rerun from the assembled files must give the gate's numbers exactly."""
+    res = primary_test(v2, test)
+    for s in SEEDS:
+        for m in ("B0", "B1"):
+            if abs(res["seeds"][s][m]["grouped_auc"] - decided["seeds"][str(s)][m]["grouped_auc"]) > 1e-12:
+                sys.exit(f"{m}:{s} does not reproduce the gate")
+    if abs(res["delta_bar"] - decided["delta_bar"]) > 1e-15 or not np.allclose(res["ci95"], decided["ci95"], 0, 1e-15):
+        sys.exit("Delta-bar or its CI does not reproduce the gate")
+    return dict(reproduces_gate=True, delta_bar=res["delta_bar"], ci95=res["ci95"])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["basic"])
+    ap.add_argument("command", choices=["basic", "s6"])
     ap.add_argument("--dataset", required=True, choices=["fb15k237", "wn18rr"])
+    ap.add_argument("--baseline", choices=["rotate"], help="s6: whose relation rotations")
     ap.add_argument("--gate", default=str(ROOT / "runs/g2gate"))
+    ap.add_argument("--runs", default=str(ROOT / "runs/g2"))
+    ap.add_argument("--saved", default=str(ROOT / "saved/g2"))
+    ap.add_argument("--data", default=str(ROOT / "data/g2"))
     ap.add_argument("--out", default=str(ROOT / "runs/g2secondary"))
     args = ap.parse_args()
     gate_dir, out_dir = Path(args.gate) / args.dataset, Path(args.out) / args.dataset
@@ -219,24 +287,56 @@ def main() -> None:
     gate_json = gate_dir / "gate.json"
     if not gate_json.exists():
         sys.exit(f"{gate_json} missing: secondary analyses follow the decided gate")
+    decided = json.loads(gate_json.read_text(encoding="utf-8"))
     state = gate.code_state()
     t0 = time.time()
     v2, test = gate.assemble(gate_dir, "v2"), gate.assemble(gate_dir, "test")
     gate.check_provenance({**v2["provenance"], **test["provenance"]}, state)
-    fallback = np.load(gate_dir / "test_structure.npz")["fallback"]
-    res = basic_analyses(v2, test, fallback, relation_labels(args.dataset))
-    decided = json.loads(gate_json.read_text(encoding="utf-8"))
-    for key, value in res["check"]["grouped_auc"].items():               # must reproduce the gate exactly
-        m, s = key.split(":")
-        if abs(value - decided["seeds"][s][m]["grouped_auc"]) > 1e-12:
-            sys.exit(f"{key}: {value} does not reproduce the gate's {decided['seeds'][s][m]['grouped_auc']}")
-    res["check"]["reproduces_gate"] = True
-    res.update(dataset=args.dataset, kind="S2, S7 (FB15k-237 part), S9; protocol notes of 2026-11-22; no pass rule",
-               freeze_commit=freeze, head=state["head"], frozen_tree=state["frozen_tree"],
-               sources=test["sources"], versions=gate.versions(), created=time.strftime("%Y-%m-%d %H:%M:%S"))
+    meta = dict(dataset=args.dataset, freeze_commit=freeze, head=state["head"], frozen_tree=state["frozen_tree"],
+                gate_sources=test["sources"], versions=gate.versions(), created=time.strftime("%Y-%m-%d %H:%M:%S"))
     out_dir.mkdir(parents=True, exist_ok=True)
-    gate.write_json(out_dir / "basic.json", res)
-    print(f"wrote {out_dir / 'basic.json'} ({time.time() - t0:.0f} s); the gate's grouped AUCs are reproduced")
+
+    if args.command == "basic":
+        fallback = np.load(gate_dir / "test_structure.npz")["fallback"]
+        res = basic_analyses(v2, test, fallback, relation_labels(args.dataset))
+        for key, value in res["check"]["grouped_auc"].items():           # must reproduce the gate exactly
+            m, s = key.split(":")
+            if abs(value - decided["seeds"][s][m]["grouped_auc"]) > 1e-12:
+                sys.exit(f"{key}: {value} does not reproduce the gate's {decided['seeds'][s][m]['grouped_auc']}")
+        res["check"]["reproduces_gate"] = True
+        res.update(kind="S2, S7 (FB15k-237 part), S9; protocol notes of 2026-11-22; no pass rule", **meta)
+        target = out_dir / "basic.json"
+
+    else:                                                                 # s6
+        if args.baseline is None:
+            sys.exit("s6 needs --baseline")
+        check = reproduce_gate(v2, test, decided)
+        tables = baseline_tables(Path(args.runs), args.dataset, args.baseline)
+        features, sources = {}, {}
+        for split in ("v2", "test"):
+            committed = gate.committed_file(f"saved/g2/{args.dataset}/manifest.json")
+            d = gate.load_split(args.dataset, split, Path(args.saved), Path(args.data), allow_test=True,
+                                committed_manifest=committed)
+            if not np.array_equal(d["pos"][:, 1], (v2 if split == "v2" else test)["relations"]):
+                sys.exit(f"{split}: the loaded split and the gate's feature files disagree")
+            features[split] = {}
+            for s, (table, stem) in tables.items():
+                features[split][s] = holonomy_features(d, table)
+                sources[f"{args.baseline}:{s}"] = dict(source=Path(stem).relative_to(ROOT).as_posix(),
+                                                       weights_sha256=gate.sha256(Path(f"{stem}_best.pt")))
+                gate.save_npz(out_dir / f"{split}_{args.baseline}_holonomy_seed{s}.npz",
+                              dict(pos=features[split][s][0], neg=features[split][s][1]),
+                              dict(**{k: meta[k] for k in ("head", "frozen_tree", "created")}, split=split,
+                                   source=sources[f"{args.baseline}:{s}"]))
+            print(f"{split}: {args.baseline}-rotation holonomy features ({time.time() - t0:.0f} s)", flush=True)
+        res = dict(kind=f"S6, holonomy from {args.baseline}'s own relation rotations, B0 against B0 + it; "
+                        "protocol note of 2026-11-22 (second); no pass rule",
+                   check=check, result=s6_analysis(v2, test, features), rotation_sources=sources,
+                   holonomy_model_gate=dict(delta_bar=decided["delta_bar"], ci95=decided["ci95"]), **meta)
+        target = out_dir / f"s6_{args.baseline}.json"
+
+    gate.write_json(target, res)
+    print(f"wrote {target} ({time.time() - t0:.0f} s); the gate is reproduced")
 
 
 if __name__ == "__main__":
