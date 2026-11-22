@@ -1,9 +1,11 @@
-"""G2 secondary analyses, as fixed in the protocol notes of 2026-11-22 (second note).
+"""G2 secondary analyses, as fixed in the protocol notes of 2026-11-22 (second and fourth notes).
 
     python experiments/g2_secondary.py basic --dataset fb15k237      # S2, S7 (FB15k-237 part), S9
     python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline rotate   # S6, RotatE's rotations
     python experiments/g2_secondary.py s6 --dataset fb15k237 --baseline quate    # S6, QuatE's rotations
     python experiments/g2_secondary.py s3 --dataset fb15k237         # S3, typed path rules
+    python experiments/g2_secondary.py s5 --dataset fb15k237         # S5, QuatE in place of RotatE
+    python experiments/g2_secondary.py s7wn --dataset wn18rr         # S7, WN18RR part
     python experiments/g2_secondary.py collapse --dataset wn18rr     # rotation collapse check (exploratory)
 
 This code lives outside the frozen paths on purpose, so that the test-split guard of
@@ -264,12 +266,16 @@ def holonomy_features(d: dict, table) -> tuple[np.ndarray, np.ndarray]:
     return pos, neg.reshape(m, k)
 
 
-def replace_holonomy(split: dict, features: dict) -> dict:
-    """A copy of an assembled split whose holonomy:<s> columns are replaced by features[s] = (pos, neg)."""
+def replace_columns(split: dict, model: str, features: dict) -> dict:
+    """A copy of an assembled split whose <model>:<s> columns are replaced by features[s] = (pos, neg)."""
     out = dict(split, pos=dict(split["pos"]), neg=dict(split["neg"]))
     for s, (p, n) in features.items():
-        out["pos"][f"holonomy:{s}"], out["neg"][f"holonomy:{s}"] = p, n
+        out["pos"][f"{model}:{s}"], out["neg"][f"{model}:{s}"] = p, n
     return out
+
+
+def replace_holonomy(split: dict, features: dict) -> dict:
+    return replace_columns(split, "holonomy", features)
 
 
 def s6_analysis(v2: dict, test: dict, features: dict, n_boot: int = N_BOOT) -> dict:
@@ -277,6 +283,50 @@ def s6_analysis(v2: dict, test: dict, features: dict, n_boot: int = N_BOOT) -> d
     res = primary_test(replace_holonomy(v2, features["v2"]), replace_holonomy(test, features["test"]), n_boot=n_boot)
     res.pop("decision")                                   # S6 has no pass rule (note of 2026-11-22, second)
     return res
+
+
+# ---------------------------------------------------------------- S5 and S7 (WN18RR part)
+
+def baseline_scores(d: dict, stem: Path) -> tuple[np.ndarray, np.ndarray]:
+    """A baseline's score_hrt on a split's positives (n,) and negatives (n, k), computed as the gate
+    computes RotatE's (experiments/g2_gate.py model_scores), for any G2 baseline config."""
+    import torch
+    from rtvm.baselines import BaselineConfig, build_model, score_triples
+    rec = json.loads(stem.with_suffix(".json").read_text())
+    net = build_model(BaselineConfig(**rec["config"]), d["training"])
+    net.load_state_dict(torch.load(f"{stem}_best.pt", map_location="cpu", weights_only=True))
+    m, k = d["neg"].shape[:2]
+    return score_triples(net, d["pos"], "cpu"), score_triples(net, gate.flat(d["neg"], 1), "cpu").reshape(m, k)
+
+
+def s5_analysis(v2: dict, test: dict, features: dict, n_boot: int = N_BOOT) -> dict:
+    """S5: QuatE's score in RotatE's place in both combiners, by the primary test's procedure."""
+    res = primary_test(replace_columns(v2, "rotate", features["v2"]), replace_columns(test, "rotate", features["test"]),
+                       n_boot=n_boot)
+    res.pop("decision")
+    return res
+
+
+def reverse_in_training(triples: np.ndarray, train: np.ndarray) -> np.ndarray:
+    """True where the exact reverse (t, r, h) of a triple is a training triple."""
+    known = set(map(tuple, np.asarray(train).tolist()))
+    return np.array([(t, r, h) in known for h, r, t in np.asarray(triples).tolist()], dtype=bool)
+
+
+def grouped_deltas(v2: dict, test: dict, groups: dict, n_boot: int = N_BOOT) -> dict:
+    """Delta of B1 over B0 (primary combiners, refitted on V2 as in the primary test) within each
+    group of test positives, each with the relation bootstrap restricted to its positives."""
+    rows = {}
+    n, k = test["neg"]["covered"].shape
+    for s in SEEDS:
+        vp, vn = model_columns(v2["pos"], s), model_columns(v2["neg"], s)
+        tp, tn = model_columns(test["pos"], s), model_columns(test["neg"], s)
+        for name, names in (("B0", B0), ("B1", B1)):
+            _, sp, sn = fit_and_score(vp, vn, tp, tn, names)
+            rows[name, s] = masked_rows(sp, sn, np.ones((n, k), bool))
+    d = np.stack([rows["B1", s] - rows["B0", s] for s in SEEDS])
+    rel = np.asarray(test["relations"])
+    return {g: delta_summary(d[:, mask], rel[mask], n_boot) for g, mask in groups.items() if mask.any()}
 
 
 # ---------------------------------------------------------------- S3: typed path rules
@@ -469,7 +519,7 @@ def reproduce_gate(v2: dict, test: dict, decided: dict) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["basic", "s6", "s3", "collapse"])
+    ap.add_argument("command", choices=["basic", "s6", "s3", "s5", "s7wn", "collapse"])
     ap.add_argument("--dataset", required=True, choices=["fb15k237", "wn18rr"])
     ap.add_argument("--baseline", choices=["rotate", "quate"], help="s6: whose relation rotations")
     ap.add_argument("--gate", default=str(ROOT / "runs/g2gate"))
@@ -511,6 +561,37 @@ def main() -> None:
         res["check"]["reproduces_gate"] = True
         res.update(kind="S2, S7 (FB15k-237 part), S9; protocol notes of 2026-11-22; no pass rule", **meta)
         target = out_dir / "basic.json"
+
+    elif args.command in ("s5", "s7wn"):
+        check = reproduce_gate(v2, test, decided)
+        committed = gate.committed_file(f"saved/g2/{args.dataset}/manifest.json")
+        splits = {split: gate.load_split(args.dataset, split, Path(args.saved), Path(args.data), allow_test=True,
+                                         committed_manifest=committed) for split in ("v2", "test")}
+        for split, assembled in (("v2", v2), ("test", test)):
+            if not np.array_equal(splits[split]["pos"][:, 1], assembled["relations"]):
+                sys.exit(f"{split}: the loaded split and the gate's feature files disagree")
+        if args.command == "s5":
+            features, sources = {"v2": {}, "test": {}}, {}
+            for s, stem in model_runs_any(Path(args.runs), args.dataset, "quate").items():
+                for split in ("v2", "test"):
+                    features[split][s] = baseline_scores(splits[split], stem)
+                sources[f"quate:{s}"] = dict(source=stem.relative_to(ROOT).as_posix(),
+                                             weights_sha256=gate.sha256(Path(f"{stem}_best.pt")))
+                print(f"QuatE run {stem.name} scored ({time.time() - t0:.0f} s)", flush=True)
+            res = dict(kind="S5, QuatE's score_hrt in RotatE's place in both combiners; protocol note of "
+                            "2026-11-22 (fourth); no pass rule",
+                       check=check, result=s5_analysis(v2, test, features), quate_sources=sources,
+                       rotate_gate=dict(delta_bar=decided["delta_bar"], ci95=decided["ci95"]), **meta)
+            target = out_dir / "s5.json"
+        else:
+            if args.dataset != "wn18rr":
+                sys.exit("s7wn is the WN18RR part of S7")
+            rev = reverse_in_training(splits["test"]["pos"], splits["test"]["train"])
+            res = dict(kind="S7, WN18RR part: Delta-bar for test positives whose exact reverse is a training "
+                            "triple, and for the rest; protocol note of 2026-11-22 (fourth); no pass rule",
+                       check=check, groups=grouped_deltas(v2, test, {"reverse_in_training": rev, "rest": ~rev}),
+                       n_reverse_in_training=int(rev.sum()), n_positives=int(len(rev)), **meta)
+            target = out_dir / "s7_wn18rr.json"
 
     elif args.command == "s3":
         check = reproduce_gate(v2, test, decided)

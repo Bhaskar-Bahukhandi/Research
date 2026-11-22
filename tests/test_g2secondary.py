@@ -285,6 +285,39 @@ def test_rotation_norms_are_zero_at_identity_and_bounded_by_the_rank(rank):
     assert (norms <= bound * (1 + 1e-5)).all() and norms.max() > 0.5 * bound     # float32 rounding at the bound
 
 
+def test_reverse_in_training_by_hand():
+    sec = _secondary()
+    train = np.array([[1, 0, 2], [3, 1, 4], [5, 0, 5]])
+    triples = np.array([[2, 0, 1], [1, 0, 2], [4, 1, 3], [4, 0, 3], [5, 0, 5]])
+    # reverse of (2,0,1) is (1,0,2): yes; reverse of (1,0,2) is (2,0,1): no; (4,1,3) -> (3,1,4): yes;
+    # (4,0,3) -> (3,0,4): no (relation differs); a self-loop is its own reverse
+    assert sec.reverse_in_training(triples, train).tolist() == [True, False, True, False, True]
+
+
+def test_grouped_deltas_with_one_group_is_the_primary_test():
+    sec = _secondary()
+    rng = np.random.default_rng(10)
+    v2, test = synthetic_split(rng, 500, 10, True), synthetic_split(rng, 500, 10, True)
+    primary = primary_test(v2, test, n_boot=200)
+    mask = rng.random(500) < 0.3
+    res = sec.grouped_deltas(v2, test, {"all": np.ones(500, bool), "some": mask, "none": np.zeros(500, bool)},
+                             n_boot=200)
+    assert res["all"]["delta_bar"] == pytest.approx(primary["delta_bar"], abs=1e-15)
+    assert res["all"]["ci95"] == pytest.approx(primary["ci95"], abs=1e-15)
+    assert res["some"]["n_positives"] == int(mask.sum()) and "none" not in res
+
+
+def test_s5_with_rotate_features_is_the_primary_test():
+    sec = _secondary()
+    rng = np.random.default_rng(11)
+    v2, test = synthetic_split(rng, 500, 10, True), synthetic_split(rng, 500, 10, True)
+    same = {split: {s: (d["pos"][f"rotate:{s}"], d["neg"][f"rotate:{s}"]) for s in (0, 1, 2)}
+            for split, d in (("v2", v2), ("test", test))}
+    res = sec.s5_analysis(v2, test, same, n_boot=200)
+    primary = primary_test(v2, test, n_boot=200)
+    assert "decision" not in res and res["delta_bar"] == primary["delta_bar"] and res["ci95"] == primary["ci95"]
+
+
 def test_fallback_mask_changes_only_what_it_should():
     sec = _secondary()
     rng = np.random.default_rng(4)
