@@ -74,11 +74,23 @@ def test_build_check_passes_on_the_committed_record():
     if not saved.exists() or not kb.exists():
         pytest.skip("needs data/metaqa/kb.txt and the committed saved/metaqa record")
     build = _module("metaqa_build_data")
-    manifest, blob = build.build(kb)
+    manifest, _, split = build.build(kb)
+    assert build.matches_record(ROOT / "saved/metaqa", manifest, split)      # arrays, not zip bytes
+
+
+def test_record_check_catches_a_changed_split(tmp_path):
     import json
-    committed = json.loads(saved.read_text(encoding="utf-8"))
-    assert committed["kb"] == manifest["kb"] and committed["split"] == manifest["split"]
-    assert (ROOT / "saved/metaqa/split.npz").read_bytes() == blob
+    import shutil
+    if not (ROOT / "saved/metaqa/manifest.json").exists() or not (ROOT / "data/metaqa/kb.txt").exists():
+        pytest.skip("needs data/metaqa/kb.txt and the committed saved/metaqa record")
+    build = _module("metaqa_build_data")
+    manifest, _, split = build.build(ROOT / "data/metaqa/kb.txt")
+    shutil.copy(ROOT / "saved/metaqa/manifest.json", tmp_path / "manifest.json")
+    bad = {k: v.copy() for k, v in split.items() if k in ("train", "v_tune", "v_select")}
+    bad["v_tune"][0], bad["train"][0] = bad["train"][0], bad["v_tune"][0]          # one triple swapped
+    np.savez(tmp_path / "split.npz", **bad)
+    assert not build.matches_record(tmp_path, manifest, split)
+    assert json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))["split"]["file"] == "split.npz"
 
 
 # ---------------------------------------------------------------- link prediction

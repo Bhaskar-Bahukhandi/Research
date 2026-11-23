@@ -42,7 +42,24 @@ def split_bytes(split: dict) -> bytes:
     return buf.getvalue()
 
 
-def build(kb_path: Path) -> tuple[dict, bytes]:
+def same_split(saved_npz: Path, split: dict) -> bool:
+    """Whether the committed split.npz holds the same index arrays as a fresh split. The arrays are
+    what must reproduce; the zip container's bytes differ between NumPy builds (seen on Kaggle,
+    2026-11-23), and its sha256 only guards the committed file (phase3.metaqa.load_data)."""
+    z = np.load(saved_npz)
+    return all(np.array_equal(z[name], split[name]) for name in SPLITS)
+
+
+def matches_record(out: Path, manifest: dict, split: dict) -> bool:
+    """A fresh build agrees with the committed record: same kb entry, same split entry apart from the
+    container hash, and the same arrays."""
+    saved = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    strip = lambda d: {k: v for k, v in d.items() if k != "sha256"}          # noqa: E731
+    return (saved["kb"] == manifest["kb"] and strip(saved["split"]) == strip(manifest["split"])
+            and same_split(out / saved["split"]["file"], split))
+
+
+def build(kb_path: Path) -> tuple[dict, bytes, dict]:
     raw = kb_path.read_bytes()
     kb = parse_kb(raw.decode("utf-8"))
     split = split_kb(kb.triples)
@@ -65,7 +82,7 @@ def build(kb_path: Path) -> tuple[dict, bytes]:
         code=dict(commit=git("rev-parse", "HEAD"), dirty=bool(git("status", "--porcelain", "--", *CODE_PATHS))),
         versions=dict(python=sys.version.split()[0], numpy=np.__version__),
         created=time.strftime("%Y-%m-%d %H:%M:%S"))
-    return manifest, blob
+    return manifest, blob, split
 
 
 def main() -> None:
@@ -76,10 +93,9 @@ def main() -> None:
     ap.add_argument("--allow-dirty", action="store_true", help="build from uncommitted code (dry runs only)")
     args = ap.parse_args()
     out = Path(args.out)
-    manifest, blob = build(Path(args.kb))
+    manifest, blob, split = build(Path(args.kb))
     if args.check:
-        saved = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
-        same = all(saved[k] == manifest[k] for k in ("kb", "split")) and (out / "split.npz").read_bytes() == blob
+        same = matches_record(out, manifest, split)
         print("check:", "PASS" if same else "FAIL")
         sys.exit(0 if same else 1)
     if manifest["code"]["dirty"] and not args.allow_dirty:
