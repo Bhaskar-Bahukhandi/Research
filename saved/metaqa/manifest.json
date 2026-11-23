@@ -1,0 +1,61 @@
+{
+ "source": "MetaQA (Zhang et al., AAAI 2018): kb.txt from the Google Drive folder linked by github.com/yuyuz/MetaQA (Drive file id 0B-36Uca2AvwhMUFHeUpTRWp5eUU); Creative Commons licence per its README",
+ "rules": "notes/protocol.md, seventh note of 2026-11-22",
+ "kb": {
+  "file": "data/metaqa/kb.txt",
+  "bytes": 5220771,
+  "sha256": "9b4d3b3066266075ad1577b4beed68e6e112e76e1a29ed2cb00a2896d2b792af",
+  "lines": 134741,
+  "triples": 133582,
+  "duplicates_removed": 1159,
+  "entities": 43234,
+  "relations": 9,
+  "triples_per_relation": {
+   "directed_by": 15957,
+   "has_genre": 15485,
+   "has_imdb_rating": 314,
+   "has_imdb_votes": 119,
+   "has_tags": 28719,
+   "in_language": 3428,
+   "release_year": 16715,
+   "starred_actors": 33718,
+   "written_by": 19127
+  },
+  "triples_sha256": "969d373b0ce8abfcbd7860445303f5cd28e15a60c7122d668082e9d3ee2e13f3",
+  "entities_sha256": "22a920f438c5ea2fc3d5931085da2b833f4ea27af7ae39a46259b90db6732af5",
+  "relations_sha256": "3a268c8a1277d488ee41388ee9fc6f280e0896a1b467d310437a235aaa4b7bba"
+ },
+ "split": {
+  "file": "split.npz",
+  "sha256": "a81c3f0be8a59798b191c169e45fea943821623bc28f1bdd794fb3ba6f7dcb8a",
+  "seed": 0,
+  "held_out_fraction": 0.05,
+  "counts": {
+   "train": {
+    "triples": 121579,
+    "entities": 43234
+   },
+   "v_tune": {
+    "triples": 5995,
+    "entities": 8174
+   },
+   "v_select": {
+    "triples": 6008,
+    "entities": 8126
+   }
+  },
+  "moved_back_to_train": {
+   "v_tune": 684,
+   "v_select": 671
+  }
+ },
+ "code": {
+  "commit": "e840c9e546391cf431c84073a94d6330951eefcd",
+  "dirty": false
+ },
+ "versions": {
+  "python": "3.13.7",
+  "numpy": "2.3.3"
+ },
+ "created": "2026-11-23 08:49:29"
+}
